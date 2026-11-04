@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>运动数据同步 · 本机版</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/workspace.css">
+  <script src="/workspace.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <div class="shell workspace">
+    <header class="page-header">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">↗</span><span>运动数据同步</span></div>
+      <span class="local-badge"><span class="dot" aria-hidden="true"></span>本机版</span>
+    </header>
+    <nav class="workspace-nav" aria-label="工作台">
+      <a href="#sync" data-tab="sync">数据同步</a><a href="#accounts" data-tab="accounts">平台账号</a>
+      <a href="#jobs" data-tab="jobs">定时任务</a><a href="#records" data-tab="records">记录中心</a><a href="#tracks" data-tab="tracks">轨迹工具</a>
+    </nav>
+    <main id="main" tabindex="-1">
+      <p id="notice" class="notice" role="status" hidden></p>
+      <section data-panel="sync">
+        <div class="workspace-intro">
+          <div><p class="eyebrow">SYNC WORKSPACE</p><h1>运动活动同步</h1><p class="intro-copy">选择一个来源和多个目标，按活动查看处理结果。</p></div>
+          <button type="button" id="garmin-preset" class="button button-secondary">佳明中国 → 国际</button>
+        </div>
+        <div class="flow-grid">
+          <div class="panel">
+            <h2><span class="step">01</span>数据来源</h2>
+            <label class="field">从平台读取<select id="source" disabled></select></label>
+            <p id="source-status" class="muted"></p>
+            <div class="action-row"><button id="load" type="button" class="button button-secondary" disabled>读取最近 20 条</button><a class="button button-quiet" href="#accounts">连接账号</a></div>
+          </div>
+          <div class="panel">
+            <h2><span class="step">02</span>同步目标</h2>
+            <div id="targets" class="choices"></div>
+            <p class="muted">每条活动的原始文件只下载一次，再发送到各目标。</p>
+          </div>
+        </div>
+        <div class="panel space">
+          <div class="panel-top"><div><h2><span class="step">03</span>选择活动</h2><p id="selected-count" class="muted" aria-live="polite">已选 0 条</p></div>
+          <button id="select-all" type="button" class="button button-quiet" disabled>选择当前列表</button></div>
+          <p id="activity-empty" class="empty">读取活动后可选择 1–50 条。</p>
+          <fieldset class="activity-fieldset" id="activity-fieldset"><legend class="sr-only">活动列表</legend><div id="activities"></div></fieldset>
+          <div class="action-row"><button id="next" class="button button-quiet" type="button" hidden>下一页</button>
+            <button id="download-test" class="button button-secondary" type="button" disabled>测试下载</button>
+            <button id="run" class="button button-primary" type="button" disabled>开始同步</button></div>
+        </div>
+      </section>
+
+      <section data-panel="accounts" hidden>
+        <div class="workspace-intro"><div><p class="eyebrow">CONNECTIONS</p><h1>平台账号</h1><p class="intro-copy">看到「已保存」后即可关闭官网登录窗口。会话失效时，回到这里重新连接。</p></div></div>
+        <div id="accounts" class="platform-grid"></div>
+        <details class="panel space"><summary>查看全部平台的接入状态</summary><div id="coverage" class="coverage"></div></details>
+      </section>
+
+      <section data-panel="jobs" hidden>
+        <div class="workspace-intro"><div><p class="eyebrow">AUTOMATION</p><h1>同步任务</h1><p class="intro-copy">保存常用路线，手动运行或按 15–60 分钟间隔检查。定时同步只需本机服务运行，账号会话保持有效。</p></div></div>
+        <form id="job-form" class="panel">
+          <h2 id="job-title">新建任务</h2>
+          <div class="form-grid">
+            <label class="field">任务名称<input id="job-name" maxlength="70" required placeholder="例如 佳明跨区同步"></label>
+            <label class="field">数据来源<select id="job-source"></select></label>
+            <label class="field">同步条数<input id="job-limit" type="number" value="20" min="1" max="50" required></label>
+            <label class="field">跳过最近<input id="job-skip" type="number" value="0" min="0" max="1000" required></label>
+            <label class="field">检测间隔<select id="job-interval"><option value="0">仅手动</option><option value="15">每 15 分钟</option><option value="30">每 30 分钟</option><option value="60">每 60 分钟</option></select></label>
+          </div>
+          <p class="field-label">同步目标</p><div id="job-targets" class="choices"></div>
+          <div class="action-row"><button type="submit" class="button button-primary">保存任务</button><button type="button" id="job-reset" class="button button-quiet" hidden>取消编辑</button></div>
+        </form>
+        <div class="panel space"><h2>已保存的任务</h2><div id="job-list" class="record-list"></div></div>
+      </section>
+
+      <section data-panel="records" hidden>
+        <div class="workspace-intro"><div><p class="eyebrow">ACTIVITY LIBRARY</p><h1>记录中心</h1><p class="intro-copy">下载原始文件，查看每条活动发送到各平台后的状态。</p></div></div>
+        <div class="panel">
+          <div class="panel-top"><h2>本机活动文件</h2><label class="button button-secondary upload-label">导入 FIT / GPX<input id="file-input" type="file" multiple accept=".fit,.gpx" class="sr-only"></label></div>
+          <label class="field search-field">筛选本机记录<input id="file-filter" type="search" placeholder="搜索活动名称或文件名"></label>
+          <div id="file-list" class="record-list"></div>
+        </div>
+        <div class="panel space"><h2>同步记录</h2><div id="history" class="record-list"></div></div>
+      </section>
+
+      <section data-panel="tracks" hidden>
+        <div class="workspace-intro"><div><p class="eyebrow">ROUTE TOOLS</p><h1>轨迹工具</h1><p class="intro-copy">从本机活动库选择有定位数据的轨迹。</p></div></div>
+        <div class="flow-grid">
+          <div class="panel">
+            <h2>选择轨迹</h2><div id="track-files" class="record-list"></div>
+            <div class="action-row"><button type="button" id="draw-track" class="button button-secondary">预览轨迹</button><button type="button" id="merge-track" class="button button-secondary">合并为 GPX</button></div>
+          </div>
+          <div class="panel">
+            <h2>轨迹预览</h2><p id="track-info" class="muted">可叠加多条轨迹并导出透明贴纸。</p>
+            <canvas id="track-canvas" width="900" height="600" aria-label="轨迹图"></canvas>
+            <button type="button" id="track-png" class="button button-secondary" disabled>导出透明 PNG</button>
+          </div>
+        </div>
+        <div class="panel space" aria-labelledby="recorder-title">
+          <div class="panel-top"><div><h2 id="recorder-title">临时定位记录</h2><p class="muted">使用当前设备定位。记录时请保持页面开启。</p></div><label class="field">运动类型<select id="record-type"><option value="骑行">骑行</option><option value="跑步">跑步</option><option value="徒步">徒步</option></select></label></div>
+          <p id="recorder-stats" class="recorder-stats" aria-live="polite">等待开始</p>
+          <div class="action-row"><button id="start-record" class="button button-secondary" type="button">开始记录</button><button id="stop-record" class="button button-secondary" type="button" disabled>停止记录</button><button id="save-record" class="button button-primary" type="button" disabled>保存 GPX</button></div>
+        </div>
+      </section>
+
+      <section id="run-panel" class="panel space" aria-labelledby="run-title" hidden>
+        <div class="panel-top"><div><h2 id="run-title">运行日志</h2><p id="run-summary" class="muted" aria-live="polite"></p></div><button id="stop" class="button button-secondary" type="button" hidden>停止同步</button></div>
+        <ol id="run-log" class="run-log"></ol>
+      </section>
+      <noscript><p class="notice">请启用 JavaScript 后使用运动数据同步。</p></noscript>
+    </main>
+    <footer><span>运动数据同步 · 本机运行</span><a href="https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform" target="_blank" rel="noopener noreferrer">原项目 ↗</a></footer>
+  </div>
+  <dialog id="credential-dialog" aria-labelledby="credential-title">
+    <form id="credential-form" autocomplete="off">
+      <h2 id="credential-title"></h2><p id="credential-note" class="muted"></p>
+      <div id="credential-fields" class="form-grid"></div>
+      <p id="credential-error" class="notice error" role="alert" hidden></p>
+      <div class="action-row"><button class="button button-primary" type="submit">保存连接</button><button class="button button-quiet" id="close-dialog" type="button">取消</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

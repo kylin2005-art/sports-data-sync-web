@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>佳明国区转存 · 本地版</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#activities">跳到运动记录</a>
+  <div class="shell">
+    <header class="page-header">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">↗</span><span>佳明国区转存</span></div>
+      <span class="local-badge"><span class="dot" aria-hidden="true"></span>本机运行</span>
+    </header>
+    <main>
+      <div class="intro">
+        <p class="eyebrow">GARMIN CONNECT TRANSFER</p>
+        <h1>国内记录，转存国际区。</h1>
+        <p class="intro-copy">登录两个区域，选择一条运动记录，再确认转存。</p>
+      </div>
+
+      <section class="account-section" aria-labelledby="accounts-title">
+        <div class="section-heading"><h2 id="accounts-title"><span class="step">01</span>连接账号</h2><span class="section-caption">密码和验证码只在佳明官网输入</span></div>
+        <div class="account-grid">
+          <article class="account-card" aria-labelledby="cn-title">
+            <div class="account-top"><span class="region-label">来源 · CN</span><span id="cn-status" class="session-status">正在检查</span></div>
+            <h3 id="cn-title">佳明国内区</h3>
+            <p class="domain">connect.garmin.cn</p>
+            <div class="account-actions">
+              <button type="button" class="button button-secondary" data-login="cn">打开官方登录 <span aria-hidden="true">↗</span></button>
+              <button type="button" class="button button-quiet" data-verify="cn">验证登录</button>
+            </div>
+            <p id="cn-message" class="account-message" aria-live="polite">在独立浏览器窗口完成登录及两步验证。</p>
+          </article>
+          <div class="route-arrow" aria-hidden="true">→</div>
+          <article class="account-card" aria-labelledby="com-title">
+            <div class="account-top"><span class="region-label">目标 · COM</span><span id="com-status" class="session-status">正在检查</span></div>
+            <h3 id="com-title">佳明国际区</h3>
+            <p class="domain">connect.garmin.com</p>
+            <div class="account-actions">
+              <button type="button" class="button button-secondary" data-login="com">打开官方登录 <span aria-hidden="true">↗</span></button>
+              <button type="button" class="button button-quiet" data-verify="com">验证登录</button>
+            </div>
+            <p id="com-message" class="account-message" aria-live="polite">登录完成后，回到这里点击“验证登录”。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="activities" class="activity-section" aria-labelledby="activities-title">
+        <div class="section-heading activity-heading">
+          <div><h2 id="activities-title"><span class="step">02</span>选择运动记录</h2><p id="list-caption" class="section-description">从国内区读取，每次 20 条。</p></div>
+          <button type="button" id="load-button" class="button button-secondary" disabled>读取最近 20 条</button>
+        </div>
+        <div id="list-notice" class="notice" role="status" hidden></div>
+        <div class="list-panel">
+          <div id="empty-state" class="empty-state">
+            <span class="empty-symbol" aria-hidden="true">↗</span>
+            <h3 id="empty-title">准备好你的下一段旅程</h3>
+            <p id="empty-copy">验证国内区登录后，点击“读取最近 20 条”。</p>
+          </div>
+          <fieldset id="activity-fieldset" class="activity-fieldset" hidden>
+            <legend class="sr-only">选择一条国内区运动记录</legend>
+            <div class="list-columns" aria-hidden="true"><span>运动记录</span><span>距离</span><span>时长</span></div>
+            <div id="activity-list"></div>
+          </fieldset>
+          <div id="list-footer" class="list-footer" hidden><span id="list-count"></span><button type="button" id="next-button" class="button button-quiet">再读取 20 条 <span aria-hidden="true">↓</span></button></div>
+        </div>
+      </section>
+
+      <section class="transfer-panel" aria-labelledby="transfer-title">
+        <div class="transfer-summary"><h2 id="transfer-title"><span class="step">03</span>确认转存</h2><p id="selected-name">尚未选择运动记录</p><p id="transfer-hint" class="muted">当前支持单条转存，目标为佳明国际区。</p></div>
+        <button type="button" id="transfer-button" class="button button-primary" disabled>确认转存到国际区 <span aria-hidden="true">→</span></button>
+      </section>
+      <div id="transfer-notice" class="notice transfer-notice" role="status" hidden></div>
+      <section id="receipt" class="receipt" aria-labelledby="receipt-title" tabindex="-1" hidden>
+        <div class="receipt-check" aria-hidden="true">✓</div>
+        <div class="receipt-content"><h2 id="receipt-title">已在国际区确认记录</h2><p id="receipt-name"></p><p id="receipt-detail" class="muted"></p></div>
+        <a id="receipt-link" class="button button-success" target="_blank" rel="noopener noreferrer">查看国际区记录 <span aria-hidden="true">↗</span></a>
+      </section>
+      <p id="connection-notice" class="connection-notice" role="status" hidden></p>
+      <noscript><p class="notice">请启用 JavaScript 后使用本地转存工具。</p></noscript>
+    </main>
+    <footer><span>本地工具 · 单条活动转存</span><span>确认成功后，可直接打开国际区记录核对。</span></footer>
+  </div>
+</body>
+</html>
