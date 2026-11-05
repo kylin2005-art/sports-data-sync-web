@@ -446,14 +446,35 @@ export class GarminBrowser {
   async verify(region) {
     regionName(region);
     return this.#exclusive(async () => {
+      const pending = this.#sessions.get(region);
+      const chinaLogin = region === 'cn' && pending?.manualLogin;
+      const waitingForLogin = () => new GarminError('佳明中国尚未完成登录。请在工作台打开的佳明窗口完成官网验证，再点「验证登录」。', 409);
+      if (chinaLogin) {
+        // The sign-in redirect page is also hosted on connect.garmin.cn.
+        const page = pending.context.pages().findLast(tab => {
+          if (tab.isClosed()) return false;
+          const url = URL.parse(tab.url());
+          return url?.origin === ORIGINS.cn && (url.pathname === '/app' || url.pathname.startsWith('/app/'));
+        });
+        if (!page) throw waitingForLogin();
+        pending.page = page;
+      }
       const session = await this.#ensureSession(region);
-      const result = await this.#verify(region, session.manualLogin && !session.headless);
-      session.manualLogin = false;
-      if (!result.accountKey) return result;
+      let result;
+      try { result = await this.#verify(region, session.manualLogin && !session.headless); }
+      catch (error) {
+        if (chinaLogin && error instanceof GarminError && error.status === 401 && error.region === region) throw waitingForLogin();
+        throw error;
+      }
+      if (!result.accountKey) {
+        session.manualLogin = false;
+        return result;
+      }
       let sessionState;
       try { sessionState = await this.#snapshot(region, session); }
       catch { throw new GarminError(`${LABELS[region]}登录已验证，但登录状态未能保存，请保持官方窗口打开并重新验证。`, 503); }
       this.#saved.set(region, { accountKey: result.accountKey, sessionState });
+      session.manualLogin = false;
       return { ...result, sessionState: structuredClone(sessionState) };
     }, false);
   }

@@ -199,7 +199,10 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
         await invalidate(region);
         return garmin.openLogin(region);
       }
-      if (!workspace?.hasSavedGarmin(region)) await invalidate(region);
+      if (!workspace?.hasSavedGarmin(region)) {
+        verified[region] = false;
+        workspace?.setGarmin(region, null);
+      }
       if (region === 'cn') seen.clear();
       const result = await garmin.verify(region);
       const saved = await workspace?.rememberGarmin(region, result);

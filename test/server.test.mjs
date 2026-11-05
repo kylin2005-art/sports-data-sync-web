@@ -2,16 +2,19 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import test from 'node:test';
 import { createServer } from '../server.mjs';
+import { SyncStore } from '../sync-store.mjs';
+import { SyncWorkspace } from '../sync-workspace.mjs';
 
 const record = { id: '123', name: 'Synthetic ride', type: 'cycling', time: '2026-11-04T08:00:00Z', distance: 12.5, duration: 1800 };
 const page = { activities: [record], nextStart: 20 };
 const receipt = { id: '123', activityId: '999', url: 'https://connect.garmin.com/modern/activity/999', message: 'Synthetic import confirmed' };
 
-async function fixture(t, overrides = {}) {
+async function fixture(t, overrides = {}, workspace) {
   const calls = [];
   const defaults = {
     openLogin: async region => ({ message: `Login ${region} opened` }),
     verify: async region => ({ message: `Verified ${region}` }),
+    forget: () => {},
     activities: async () => page,
     transfer: async () => receipt,
     close: async () => {}
@@ -20,12 +23,15 @@ async function fixture(t, overrides = {}) {
     calls.push({ name, args });
     return (overrides[name] || implementation)(...args);
   }]));
-  const server = createServer(adapter);
+  const server = createServer(adapter, workspace && (options => new SyncWorkspace({ ...options, ...workspace, garmin: adapter })));
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
-  t.after(() => new Promise(resolve => server.close(resolve)));
+  t.after(async () => {
+    await new Promise(resolve => server.close(resolve));
+    await server.syncWorkspace?.close();
+  });
   const port = server.address().port;
   function request(method, path, body, options = {}) {
     const host = options.host ?? `127.0.0.1:${port}`;
@@ -124,6 +130,39 @@ test('login does not verify a region and verify returns the adapter message', as
   assert.equal(state.cn, true);
   assert.equal(state.com, false);
   assert.deepEqual(calls.map(call => call.name), ['openLogin', 'verify']);
+});
+
+test('workspace preserves a fresh Garmin login window across verification attempts', async t => {
+  let loginOpen = false;
+  let signedIn = false;
+  const writes = [];
+  const accountKey = 'a'.repeat(64);
+  const sessionState = { cookies: [], origins: [] };
+  const { request, calls } = await fixture(t, {
+    openLogin: async () => { loginOpen = true; return { message: 'Login opened' }; },
+    forget: () => { loginOpen = false; },
+    verify: async region => {
+      if (!loginOpen) throw Object.assign(new Error('Login window invalidated'), { status: 401, region });
+      if (!signedIn) throw Object.assign(new Error('Login still in progress'), { status: 409 });
+      return { message: 'Verified', accountKey, sessionState };
+    },
+  }, {
+    store: new SyncStore(), uploads: { definitions: [] }, sources: { definitions: [] },
+    sessionVault: { save: async value => writes.push(structuredClone(value)) },
+  });
+
+  assert.equal((await request('POST', '/api/login', { region: 'cn' })).status, 200);
+  error(await request('POST', '/api/verify', { region: 'cn' }), 409);
+  assert.deepEqual((await request('GET', '/api/state')).json, { cn: false, com: false });
+  assert.deepEqual(writes, []);
+
+  signedIn = true;
+  const verified = await request('POST', '/api/verify', { region: 'cn' });
+  assert.equal(verified.status, 200, verified.text);
+  assert.deepEqual(Object.keys(verified.json), ['message']);
+  assert.deepEqual((await request('GET', '/api/state')).json, { cn: true, com: false });
+  assert.deepEqual(writes, [{ garmin: { cn: { accountKey, sessionState } }, credentials: {} }]);
+  assert.deepEqual(calls.map(call => call.name), ['forget', 'openLogin', 'verify', 'verify']);
 });
 
 test('activity reads require CN verification and preserve pagination', async t => {

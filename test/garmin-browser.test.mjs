@@ -216,6 +216,30 @@ test('activity verification may fall back without inventing account identity', a
   assert.equal(Object.hasOwn(await browser.verify('cn'), 'accountKey'), false);
 });
 
+test('China verification waits through the blank sign-in redirect and uses the returned activity tab', async t => {
+  const { browser, calls, contexts, pages } = await fixture(t);
+  await pages.cn.goto('https://connect.garmin.cn/signin/');
+  await assert.rejects(browser.verify('cn'), error => error.status === 409 && !error.region);
+  assert.deepEqual(calls, []);
+
+  const activityTab = { ...pages.cn };
+  pages.cn.url = () => 'https://sso.garmin.cn/portal/sso/zh-CN/sign-in';
+  await activityTab.goto('https://connect.garmin.cn/app/activities');
+  contexts.cn.pages = () => [pages.cn, activityTab];
+  const result = await browser.verify('cn');
+  assert.equal(result.sessionState.cookies[0].value, 'session-cn');
+  assert.equal(calls.filter(isList).length, 1);
+});
+
+test('an unauthorized response during manual China login can be retried in the same window', async t => {
+  let signedIn = false;
+  const { browser, launches } = await fixture(t, call => call.region === 'cn' && !signedIn ? new Response(null, { status: 401 }) : undefined);
+  await assert.rejects(browser.verify('cn'), error => error.status === 409 && !error.region);
+  signedIn = true;
+  assert.ok((await browser.verify('cn')).sessionState);
+  assert.equal(launches.length, 2);
+});
+
 test('known identity cannot silently degrade when socialProfile stops working', async t => {
   let unavailable = false;
   const { browser, calls } = await fixture(t, call => unavailable && call.url.pathname.includes('socialProfile') ? new Response(null, { status: 404 }) : undefined);
