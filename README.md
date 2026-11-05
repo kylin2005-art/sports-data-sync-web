@@ -62,6 +62,7 @@ Docker 卷保存工作台账号、原始活动文件、任务和同步回执。�
 
 ### 功能与实现参考
 
+感谢伟大的AI让技术平权。
 - [鸡翅幸哲迈进OB（Android）](https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform)：同步流程和部分平台的请求格式参考了这个项目。`fit-coordinate.mjs` 的坐标转换改编自其 [FitGcj02Fixer.kt](https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform/blob/38204ab682e5169bbb2af78974fc3c802fcbafe1/app/src/main/java/com/jichi/ob/util/FitGcj02Fixer.kt)。
 - [DailySync](https://github.com/gooin/dailysync-rev) 和 [garmin-connect-cn](https://github.com/gooin/garmin-connect-cn)：用于对照佳明中国区活动列表、原始 FIT 下载和跨区同步。感谢国区客户端的上游 [garmin-connect](https://github.com/Pythe1337N/garmin-connect)。
 - [magene-fit-strava-fix](https://github.com/dwmer0308-a11y/magene-fit-strava-fix) 和 [Garth](https://github.com/matin/garth)：Android 项目分别鸣谢了它们的坐标转换算法和佳明登录研究。网页版未引入 Garth。
