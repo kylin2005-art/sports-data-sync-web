@@ -1,11 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
+import { COROS_TARGETS, uploadCoros } from './coros-upload.mjs';
+import { CYCITY_API, CYCITY_TARGET } from './cycity.mjs';
 
 // Request formats follow the existing Android adapters. Wahoo/Suunto/Intervals
 // receipts additionally follow their public API docs; a bare 2xx is never success.
 const secret = (key, label, required = true) => ({ key, label, type: 'password', required });
 export const PLATFORM_DEFINITIONS = [
-  { id: 'igpsport', name: 'iGPSPORT', formats: ['fit', 'gpx'], fields: [secret('token', 'Access Token')], note: '需有效登录 Token。异步导入仅标记已接收，请在平台核对。' },
+  { id: 'igpsport', name: 'iGPSPORT 中国', formats: ['fit', 'gpx'], fields: [secret('token', 'Access Token')], note: '需中国区登录 Token。异步导入仅标记已接收，请在平台核对。' },
+  { id: 'igpsport_int', name: 'iGPSPORT 国际', formats: ['fit', 'gpx'], fields: [secret('token', 'Access Token')], note: '需国际区登录 Token。异步导入仅标记已接收，请在平台核对。' },
   { id: 'xingzhe', name: '行者', formats: ['fit'], fields: [secret('sessionId', 'sessionid'), secret('csrfToken', 'csrftoken', false)], note: '需网页会话。仅上传原始 FIT，平台返回 workout_id 和解析完成状态后确认。' },
   { id: 'magene', name: '迈金 / 顽鹿', formats: ['fit'], fields: [secret('token', 'OTM 登录 Token')], note: '上传至顽鹿 OTM；success_count 表示已接收，不代表异步入库完成。' },
   { id: 'blackbird', name: '黑鸟单车', formats: ['fit'], fields: [secret('cookie', '完整 Cookie')], note: '需有效网页 Cookie。平台可能拒绝无 GPS 或含不兼容开发者字段的 FIT。' },
@@ -15,6 +18,8 @@ export const PLATFORM_DEFINITIONS = [
   { id: 'intervals_icu', name: 'Intervals.icu', formats: ['fit', 'gpx'], fields: [secret('apiKey', '个人 API Key')], note: '在 Intervals.icu 设置中获取个人 API Key；按目标活动 ID 读回确认。' },
   { id: 'suunto', name: 'Suunto / 松拓', formats: ['fit'], fields: [secret('token', 'OAuth Access Token'), secret('subscriptionKey', 'Subscription Key')], note: '需要 Suunto 开发者应用授权；等待 PROCESSED 和 workoutKey。' },
   { id: 'komoot', name: 'Komoot', formats: ['fit', 'gpx'], fields: [{ key: 'email', label: '账号邮箱', type: 'email', required: true }, secret('token', '登录 Token')], note: '使用邮箱和登录 Token（不是密码）；支持原始 FIT/GPX，不改变坐标。' },
+  ...COROS_TARGETS,
+  CYCITY_TARGET,
 ];
 
 const definitions = new Map(PLATFORM_DEFINITIONS.map(item => [item.id, item]));
@@ -251,21 +256,35 @@ export class PlatformUploads {
   }
 
   async igpsport(ctx, credential, file, activity) {
-    const headers = { Authorization: `Bearer ${credential.token}`, Origin: 'https://app.igpsport.cn', Referer: 'https://app.igpsport.cn/' };
-    const signed = await this.request(ctx, `https://prod.zh.igpsport.com/service/sportg/third-party-server/oss/getSignedUrl?fileExtension=.${file.format}`, { headers });
+    const international = ctx.platform === 'igpsport_int';
+    const origin = international ? 'https://app.igpsport.com' : 'https://app.igpsport.cn';
+    const api = international ? 'https://prod.en.igpsport.com' : 'https://prod.zh.igpsport.com';
+    const headers = { Authorization: `Bearer ${credential.token}`, Origin: origin, Referer: `${origin}/` };
+    if (international) Object.assign(headers, {
+      'Accept-Language': 'en', TimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      'Qiwu-App-Version': '7.07.08', 'X-Platform': 'web'
+    });
+    const successCodes = international ? [0] : [0, 200];
+    const signed = await this.request(ctx, `${api}/service/sportg/third-party-server/oss/getSignedUrl?fileExtension=.${file.format}`, { headers });
     const url = checkedStorageUrl(signed.data?.data?.signedUrl, ['.aliyuncs.com']);
     const ossId = signed.data?.data?.ossId;
-    if (![0, 200].includes(signed.data?.code) || !url || typeof ossId !== 'string' || !ossId || ossId.length > 1000) throw this.error(ctx, '未取得有效的官方存储上传地址。', 'storage');
-    // The presigned URL binds headers; do not forward the API Bearer or add Content-Type.
-    await this.request(ctx, url, { method: 'PUT', body: file.bytes, write: true, payload: true, allowed: [200, 201, 204], json: false });
+    if (!successCodes.includes(signed.data?.code) || !url || typeof ossId !== 'string' || !ossId || ossId.length > 1000) throw this.error(ctx, '未取得有效的官方存储上传地址。', 'storage');
+    // The international web client sends an empty Content-Type. Neither region forwards the API Bearer to storage.
+    await this.request(ctx, url, { method: 'PUT', headers: international ? { 'Content-Type': '' } : {},
+      body: file.bytes, write: true, payload: true, allowed: [200, 201, 204], json: false });
     const title = String(activity.name || '运动记录').slice(0, 250);
-    const result = await this.request(ctx, 'https://prod.zh.igpsport.com/service/web-gateway/web-analyze/activity/uploadByOss', {
+    const fileName = `${file.fileName.slice(0, -file.format.length - 1).slice(0, 50)}.${file.format}`;
+    const body = international ? { fileName, ossName: ossId }
+      : { fileName: file.fileName, ossName: ossId, title, name: title, activityName: title };
+    const result = await this.request(ctx, `${api}/service/web-gateway/web-analyze/activity/uploadByOss`, {
       method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, write: true,
-      body: JSON.stringify({ fileName: file.fileName, ossName: ossId, title, name: title, activityName: title }),
+      body: JSON.stringify(body),
     });
-    if (![0, 200].includes(result.data?.code)) throw this.error(ctx, '文件已上传，但平台未明确接收导入任务。', 'unconfirmed');
+    if (!successCodes.includes(result.data?.code)) throw this.error(ctx, '文件已上传，但平台未明确接收导入任务。', 'unconfirmed');
     return this.receipt(ctx, 'accepted');
   }
+
+  igpsport_int(ctx, credential, file, activity) { return this.igpsport(ctx, credential, file, activity); }
 
   async outbase(ctx, credential, file) {
     const guid = randomUUID();
@@ -347,5 +366,25 @@ export class PlatformUploads {
     const detail = await this.request(ctx, `https://api.komoot.de/v007/tours/${id}`, { headers: { Authorization: headers.Authorization, 'User-Agent': headers['User-Agent'] } });
     if (positiveId(detail.data?.id) !== id) throw this.error(ctx, '目标路线读回不匹配，请到平台核对。', 'unconfirmed');
     return this.receipt(ctx, result.status === 202 ? 'duplicate' : 'confirmed', id, `https://www.komoot.com/tour/${id}`);
+  }
+
+  coros_cn(ctx, credential, file) { return uploadCoros(this, ctx, credential, file); }
+  coros_int(ctx, credential, file) { return uploadCoros(this, ctx, credential, file); }
+
+  async cycity(ctx, credential, file) {
+    const headers = { Authorization: `Bearer ${credential.token}`, Accept: 'application/json' };
+    const imported = await this.request(ctx, `${CYCITY_API}/mobile/cycling/import`, {
+      method: 'POST', headers, body: multipart('file', file), write: true, payload: true
+    });
+    const parsed = imported.data?.data;
+    if (imported.data?.code !== 200 || !parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Object.keys(parsed).length) {
+      throw this.error(ctx, '平台未返回有效的 FIT 解析结果。', 'unconfirmed');
+    }
+    const registered = await this.request(ctx, `${CYCITY_API}/mobile/cycling/uploadImportData`, {
+      method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(parsed), write: true, payload: true
+    });
+    if (registered.data?.code !== 200) throw this.error(ctx, '平台未确认导入骑行记录。', 'unconfirmed');
+    return this.receipt(ctx, 'accepted');
   }
 }

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 
 const protectedStatus = `(
-  json_extract(payload, '$.status') IN ('sending','accepted','unconfirmed','confirmed','duplicate')
+  json_extract(payload, '$.status') IN ('sending','accepted','unconfirmed','confirmed','duplicate','guided')
   OR (json_extract(payload, '$.status')='released' AND json_extract(payload, '$.previousStatus') IN ('confirmed','duplicate'))
 )`;
 
@@ -34,8 +34,10 @@ export class SyncStore {
       CREATE INDEX IF NOT EXISTS receipt_route ON receipts (json_extract(payload, '$.source'),
         json_extract(payload, '$.sourceId'), json_extract(payload, '$.target'));
       CREATE INDEX IF NOT EXISTS receipt_file ON receipts (json_extract(payload, '$.fileId'), json_extract(payload, '$.target'));
+      CREATE INDEX IF NOT EXISTS receipt_target_activity ON receipts (json_extract(payload, '$.target'), json_extract(payload, '$.activityId'));
       CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, created TEXT NOT NULL, payload TEXT NOT NULL, data BLOB NOT NULL);
       CREATE TABLE IF NOT EXISTS last_run (id INTEGER PRIMARY KEY, payload TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS workout_receipts (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
     `);
   }
 
@@ -76,6 +78,16 @@ export class SyncStore {
     return parseReceipt(row);
   }
 
+  importedFrom(source, sourceId, sourceAccount, target, targetAccount) {
+    const rows = this.db.prepare(`SELECT id,payload FROM receipts
+      WHERE json_extract(payload, '$.target')=? AND json_extract(payload, '$.activityId')=?
+        AND json_extract(payload, '$.source')=? AND ${protectedStatus}`).all(source, sourceId, target);
+    return rows.some(row => {
+      const receipt = parseReceipt(row);
+      return receipt.status === 'confirmed' && row.id === digest(target, targetAccount, receipt.sourceId, source, sourceAccount);
+    });
+  }
+
   saveReceipt(id, receipt) {
     const updated = new Date().toISOString();
     this.db.prepare('INSERT INTO receipts VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET updated=excluded.updated,payload=excluded.payload')
@@ -98,6 +110,15 @@ export class SyncStore {
     this.db.prepare('INSERT OR REPLACE INTO last_run VALUES (1, ?)').run(JSON.stringify(run));
   }
 
+  workoutReceipt(id) {
+    const row = this.db.prepare('SELECT payload FROM workout_receipts WHERE id=?').get(id);
+    return row ? JSON.parse(row.payload) : null;
+  }
+
+  saveWorkoutReceipt(id, receipt) {
+    this.db.prepare('INSERT OR REPLACE INTO workout_receipts VALUES (?, ?)').run(id, JSON.stringify(receipt));
+  }
+
   archive(file, activity = {}) {
     const id = digest(file.data);
     const created = new Date().toISOString();
@@ -114,6 +135,14 @@ export class SyncStore {
   files(start = 0, limit = 20) {
     return this.db.prepare('SELECT payload FROM files ORDER BY created DESC, id DESC LIMIT ? OFFSET ?')
       .all(limit, start).map(row => JSON.parse(row.payload));
+  }
+
+  trackLibraryPage(start, limit) {
+    const { total } = this.db.prepare('SELECT COUNT(*) AS total FROM files').get();
+    const files = this.db.prepare(`SELECT payload FROM files
+      ORDER BY CASE WHEN json_extract(payload, '$.time') <> created THEN julianday(json_extract(payload, '$.time')) END DESC,
+        created DESC, id DESC LIMIT ? OFFSET ?`).all(limit, start).map(row => JSON.parse(row.payload));
+    return { files, total };
   }
 
   file(id) {

@@ -1,19 +1,32 @@
 {
   "name": "garmin-cn-transfer-web",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22.13"
   },
   "scripts": {
+    "build": "vite build",
+    "prestart": "npm run build",
     "start": "node server.mjs",
+    "prestart:multi-user": "npm run build",
+    "start:multi-user": "node multi-user.mjs",
+    "invite": "node multi-user.mjs invite",
     "test": "node --test"
   },
   "dependencies": {
     "@garmin/fitsdk": "21.221.0",
     "@xmldom/xmldom": "0.9.12",
+    "bcryptjs": "3.0.3",
+    "element-plus": "2.14.7",
     "fflate": "0.8.3",
-    "playwright-core": "1.64.1"
+    "maplibre-gl": "6.16.0",
+    "playwright-core": "1.64.1",
+    "vue": "3.5.44"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.10",
+    "vite": "8.3.5"
   }
 }

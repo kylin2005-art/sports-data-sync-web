@@ -1,0 +1,45 @@
+name: sports-data-sync
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 90s
+    environment:
+      GARMIN_WEB_HOST: 0.0.0.0
+      GARMIN_WEB_PORT: "8768"
+      GARMIN_WEB_ORIGIN: "${GARMIN_WEB_ORIGIN:?请在 .env 设置工作台的完整源地址}"
+      GARMIN_WEB_AUTH_MODE: "${GARMIN_WEB_AUTH_MODE:-invite}"
+      GARMIN_WEB_LAN_SUBNET: "${GARMIN_WEB_LAN_SUBNET:-}"
+      GARMIN_WEB_SETUP_IP: "${GARMIN_WEB_SETUP_IP:-}"
+      GARMIN_WEB_LAN_IP: "${GARMIN_WEB_LAN_IP:-}"
+      GARMIN_WEB_PERSONAL_DI: "${GARMIN_WEB_PERSONAL_DI:-0}"
+      GARMIN_WEB_DATA_DIR: /data
+      GARMIN_WEB_VAULT_KEY_FILE: /run/secrets/vault_key
+    ports:
+      - "${GARMIN_WEB_PUBLISH_HOST:-127.0.0.1}:${GARMIN_WEB_PUBLISH_PORT:-8768}:8768"
+    volumes:
+      - data:/data
+    secrets:
+      - vault_key
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          const origin=new URL(process.env.GARMIN_WEB_ORIGIN);
+          const tls=Boolean(process.env.GARMIN_WEB_TLS_CERT_FILE);
+          require(tls?'node:https':'node:http').get({host:'127.0.0.1',port:8768,path:'/healthz',
+          ...(tls?{servername:origin.hostname}:{}),headers:{Host:origin.host}},res=>{
+          res.resume();process.exitCode=res.statusCode===200?0:1
+          }).on('error',()=>{process.exitCode=1})
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+volumes:
+  data:
+secrets:
+  vault_key:
+    file: ./.deploy-secrets/vault-key

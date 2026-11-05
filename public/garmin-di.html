@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>佳明授权 · 运动数据同步</title>
+  <link rel="icon" href="/workspace-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/auth.css">
+  <script src="/garmin-di.js" defer></script>
+</head>
+<body class="auth-page">
+  <main class="auth-layout">
+    <header class="auth-brand">
+      <img src="/workspace-icon.svg" alt="" width="40" height="40">
+      <div><strong>运动数据同步</strong><span>佳明账号连接</span></div>
+    </header>
+    <section class="auth-panel" aria-labelledby="garmin-auth-title">
+      <h1 id="garmin-auth-title">佳明账号授权</h1>
+      <p>选择地区并打开佳明登录页，在佳明官网表单中登录并完成两步验证。工作台保存佳明签发的令牌，用于后续同步。</p>
+      <p id="garmin-local-auth-hint" hidden>在新开的佳明 Connect 页面完成登录和两步验证后，回到这里查看授权结果。</p>
+      <form id="garmin-auth-form">
+        <label class="auth-field" for="garmin-region">
+          <span>佳明地区</span>
+          <select id="garmin-region">
+            <option value="cn">佳明中国</option>
+            <option value="com">佳明国际</option>
+          </select>
+        </label>
+        <button class="auth-primary" id="garmin-start" type="submit">打开佳明登录页</button>
+        <button id="garmin-refresh" type="button">验证令牌续期</button>
+      </form>
+      <p id="garmin-auth-status" role="status" aria-live="polite">选择需要连接的佳明地区。</p>
+      <iframe id="garmin-login-frame" title="佳明官网登录及两步验证" width="100%" height="560" referrerpolicy="no-referrer" hidden></iframe>
+      <p><a href="/#accounts">返回平台账号</a></p>
+      <noscript><p class="auth-error">请启用 JavaScript 后授权佳明账号。</p></noscript>
+    </section>
+    <section class="auth-panel" aria-labelledby="garmin-pilot-title">
+      <h2 id="garmin-pilot-title">测试一条骑行记录</h2>
+      <p>先连接国区和国际区账号，再选择一条国区骑行进行测试。</p>
+      <form id="garmin-pilot-form">
+        <button class="auth-primary" id="garmin-list" type="button">读取国区骑行列表</button>
+        <button id="garmin-next" type="button" disabled>加载下一页</button>
+        <label class="auth-field" for="garmin-ride">
+          <span>骑行记录</span>
+          <select id="garmin-ride" disabled><option value="">请选择骑行</option></select>
+        </label>
+        <button id="garmin-file" type="button" disabled>下载原始 FIT</button>
+        <button class="auth-primary" id="garmin-transfer" type="submit" disabled>上传到佳明国际并确认</button>
+      </form>
+      <p id="garmin-pilot-status" role="status" aria-live="polite"></p>
+      <p><a id="garmin-file-link" hidden>下载已保存的 FIT</a></p>
+      <p><a id="garmin-activity-link" hidden>在佳明国际查看已确认活动</a></p>
+    </section>
+  </main>
+</body>
+</html>

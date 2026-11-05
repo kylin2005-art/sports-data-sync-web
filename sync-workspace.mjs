@@ -1,20 +1,49 @@
 import { randomUUID } from 'node:crypto';
+import { createIntervalsWorkouts, WORKOUT_TARGETS } from './intervals-workouts.mjs';
 import { digest } from './sync-store.mjs';
 
 const regions = new Set(['cn', 'com']);
 const pageSize = 20;
 const maxActivities = 50;
 const safeId = id => typeof id === 'string' && /^[\w.:-]{1,160}$/.test(id);
-const durable = new Set(['sending', 'accepted', 'unconfirmed', 'confirmed', 'duplicate']);
+const durable = new Set(['sending', 'accepted', 'unconfirmed', 'confirmed', 'duplicate', 'guided']);
+const sportKey = value => typeof value === 'string' ? value.trim().toLowerCase().replace(/[ _-]+/g, '') : '';
+const cyclingSports = new Set([
+  'cycling', 'biking', 'road_biking', 'mountain_biking', 'downhill_biking', 'indoor_cycling',
+  'gravel_cycling', 'virtual_cycling', 'virtual_biking', 'track_cycling', 'cyclocross', 'bmx', 'e_bike_fitness', 'e_bike_mountain',
+  'handcycling', 'indoor_handcycling', 'ride', 'virtual_ride', 'mountain_bike_ride', 'gravel_ride', 'e_bike_ride',
+  'e_mountain_bike_ride', 'track_ride', 'handcycle', 'velomobile', '骑行', '公路骑行', '山地骑行', '室内骑行',
+].map(sportKey));
+const sourceSportRequired = new Set(['zwift', 'mywhoosh', 'bryton']);
+const suuntoCyclingSports = new Set(['mtb', 'gravel', 'spinning']);
+const corosCyclingSports = new Set([200, 201, 203, 204]);
+
+function sportGroup(source, activity) {
+  if (source === 'coros_cn' || source === 'coros_int') {
+    if (corosCyclingSports.has(activity.sportCode)) return 'cycling';
+    if (activity.sportCode === 100) return 'other';
+  }
+  // These adapters used a fixed cycling label even for platforms with other sports.
+  const sport = sportKey(sourceSportRequired.has(source) ? activity.sport : activity.type);
+  if (cyclingSports.has(sport) || (regions.has(source) && sport === 'commuting') ||
+      (source === 'suunto' && suuntoCyclingSports.has(sport))) return 'cycling';
+  return otherSports.has(sport) ? 'other' : 'unknown';
+}
+const otherSports = new Set([
+  'running', 'run', 'trail_running', 'trail_run', 'treadmill_running', 'track_running', 'virtual_running',
+  'virtual_run', 'walking', 'walk', 'hiking', 'hike', 'swimming', 'swim', 'lap_swimming', 'open_water_swimming',
+  'strength_training', 'weight_training', 'yoga', 'pilates', 'rowing', 'indoor_rowing', 'elliptical', 'triathlon',
+  'multisport', 'skiing', 'golf', 'cardio_training', '跑步', '徒步', '步行', '游泳', '力量训练',
+].map(sportKey));
 
 const catalog = [
   ['cn', '佳明中国', true, true], ['com', '佳明国际', true, true],
-  ['igpsport', 'iGPSPORT', true, true], ['xingzhe', '行者', true, true],
+  ['igpsport', 'iGPSPORT 中国', true, true], ['igpsport_int', 'iGPSPORT 国际', true, true], ['xingzhe', '行者', true, true],
   ['magene', '迈金', true, true], ['blackbird', '黑鸟单车', true, true],
   ['bryton', '百锐腾', true, false], ['giant', '捷安特', false, true],
   ['outbase', 'Outbase', false, true], ['coros_cn', '高驰中国', true, true],
   ['coros_int', '高驰国际', true, true], ['wahoo', 'Wahoo', true, true],
-  ['intervals_icu', 'Intervals.icu', true, true], ['keep', 'Keep', true, false],
+  ['intervals_icu', 'Intervals.icu', true, true], ['keep', 'Keep', true, true],
   ['codoon', '咕咚', true, false], ['zepp', 'Zepp', true, false],
   ['komoot', 'Komoot', true, true], ['suunto', 'Suunto', true, true],
   ['mywhoosh', 'MyWhoosh', true, false], ['zwift', 'Zwift', true, false],
@@ -57,9 +86,9 @@ export class SyncWorkspace {
   #timer;
   #saved = { garmin: {}, credentials: {} };
 
-  constructor({ garmin, store, uploads, sources, platformLogin, sessionVault, sessionData,
-    isBusy = () => false, onGarminInvalid }) {
-    Object.assign(this, { garmin, store, uploads, sources, platformLogin, sessionVault, isBusy });
+  constructor({ garmin, store, uploads, sources, platformLogin, platformPasswords, browserPlatforms = [], sessionVault, sessionData,
+    isBusy = () => false, onGarminInvalid, workouts = createIntervalsWorkouts() }) {
+    Object.assign(this, { garmin, store, uploads, sources, platformLogin, platformPasswords, sessionVault, isBusy, workouts });
     this.onGarminInvalid = onGarminInvalid || (region => this.clearGarmin(region));
     this.#run = store.lastRun();
     const sourceSpecs = new Map(sources.definitions.map(def => [def.id, def]));
@@ -68,11 +97,15 @@ export class SyncWorkspace {
       const source = sourceSpecs.get(id);
       const target = targetSpecs.get(id);
       const garmin = regions.has(id);
+      const guided = id === 'keep';
+      const signInFields = platformPasswords?.fields(id);
       return [id, {
         id, name, upstreamSource, upstreamTarget, source: Boolean(source || garmin || id === 'local'),
-        target: Boolean(target || garmin || id === 'local'), auth: garmin ? 'garmin' : id === 'local' ? 'local' : 'credential',
+        target: Boolean(target || garmin || guided || id === 'local'), guided, auth: garmin ? 'garmin' : id === 'local' ? 'local' : 'credential',
         browserLogin: Boolean(platformLogin?.supports(id)),
-        formats: garmin || id === 'local' ? ['fit', 'gpx'] : (target?.formats || []),
+        ...(signInFields?.length ? { signInFields } : {}),
+        ...(browserPlatforms.includes(id) ? { browserImport: true } : {}),
+        formats: garmin ? this.garmin.uploadFormats || ['fit', 'gpx'] : guided ? ['fit'] : id === 'local' ? ['fit', 'gpx'] : (target?.formats || []),
         fields: [...new Map([...(source?.fields || []), ...(target?.fields || [])].map(field => [field.key, field])).values()],
         note: [source?.note, target?.note].filter(Boolean).join(' '),
       }];
@@ -143,6 +176,7 @@ export class SyncWorkspace {
             ? (this.#saved.credentials[platform.id] ? 'saved' : this.#verifiedOther.has(platform.id) ? 'verified' : 'configured') : 'disconnected',
       })),
       jobs: this.store.jobs(), run: this.#run, history: this.store.history(), files: this.store.files(0, 50),
+      workoutTargets: WORKOUT_TARGETS.filter(id => this.platforms.get(id)?.fields.length),
     };
   }
 
@@ -173,6 +207,32 @@ export class SyncWorkspace {
     this.#verifiedOther.delete(platform);
     this.#seen.delete(platform);
     return { message: this.sessionVault ? '连接凭据已加密保存，实际读取或上传时校验。' : '凭据已暂存，实际读取或上传时校验。' };
+  }
+
+  async signIn({ platform, fields }) {
+    const spec = this.platforms.get(platform);
+    if (!spec?.signInFields?.length) throw new WorkspaceError(400, '请选择支持账号登录的平台。');
+    const { credential, verified } = await this.platformPasswords.signIn(platform, fields);
+    return this.#connectVerified(spec, credential, verified);
+  }
+
+  async connectBrowser({ platform, credential }) {
+    const spec = this.platforms.get(platform);
+    if (!spec?.browserImport) throw new WorkspaceError(400, '请选择支持网页登录的平台。');
+    return this.#connectVerified(spec, credential);
+  }
+
+  async #connectVerified(spec, credential, verified) {
+    const platform = spec.id;
+    const data = this.#normalizeCredential(platform, credential);
+    const verifySource = spec.source && typeof this.sources.verify === 'function';
+    if (verifySource) await this.sources.verify(platform, data);
+    await this.configure({ platform, credential: data });
+    if (verifySource || verified === true) {
+      this.#verifiedOther.add(platform);
+      return { message: `${spec.name}已通过登录验证。` };
+    }
+    return { message: `${spec.name}已连接，首次上传时会校验授权。` };
   }
 
   async disconnect({ platform }) {
@@ -226,7 +286,10 @@ export class SyncWorkspace {
         targets.some(target => target === source || !this.platforms.get(target)?.target)) {
       throw new WorkspaceError(400, '请选择至少一个已接入且与来源不同的目标。');
     }
-    if (requireConnected) for (const id of [source, ...targets]) this.#require(id);
+    if (requireConnected) {
+      this.#require(source);
+      for (const id of targets) if (!this.platforms.get(id).guided) this.#require(id);
+    }
     return { source, targets };
   }
 
@@ -282,17 +345,72 @@ export class SyncWorkspace {
     return { fileId: this.store.archive(original, metadata), fileName: original.fileName };
   }
 
+  async guidedFit(id) {
+    const receipt = this.store.receipt(id);
+    const file = receipt?.status === 'guided' && receipt.target === 'keep' && this.store.file(receipt.fileId);
+    if (!file) throw new WorkspaceError(404, '找不到待导入 Keep 的文件。');
+    if (/\.gpx$/i.test(file.fileName)) return (await import('./fit-convert.mjs')).gpxToFit(file, file);
+    if (String(file.coordinateSystem).toLowerCase().replace(/[-_]/g, '') === 'gcj02') {
+      return (await import('./fit-coordinate.mjs')).correctMageneFit(file);
+    }
+    return file;
+  }
+
+  listWorkouts(input) {
+    this.#require('intervals_icu');
+    return this.workouts.list(this.#credentials.get('intervals_icu'), input);
+  }
+
+  downloadWorkout(id) {
+    this.#require('intervals_icu');
+    return this.workouts.download(this.#credentials.get('intervals_icu'), { id });
+  }
+
+  async publishWorkout({ platform, id, oldest, newest }) {
+    if (!WORKOUT_TARGETS.includes(platform) || !safeId(id)) throw new WorkspaceError(400, '请选择课表与支持推送的设备平台。');
+    this.#require('intervals_icu');
+    this.#require(platform);
+    const key = digest('intervals-workout', platform, id);
+    const old = this.store.workoutReceipt(key);
+    if (old && old.status !== 'failed') return { ...old, message: old.status === 'confirmed' ? '这份课表已有推送回执，已跳过。' : '上次推送结果待核对，已拦截重传。' };
+    let attempted = false;
+    const save = result => { this.store.saveWorkoutReceipt(key, result); return result; };
+    try {
+      const result = await this.workouts.publish({ platform, id, oldest, newest,
+        apiKey: this.#credentials.get('intervals_icu').apiKey, credential: this.#credentials.get(platform),
+        beforeUpload: () => { save({ status: 'sending' }); attempted = true; },
+        onImported: ({ workoutId }) => save({ status: 'unconfirmed', workoutId }),
+      });
+      return save(result);
+    } catch (error) {
+      if (attempted && error.mayHaveUploaded !== false) {
+        return save({ ...this.store.workoutReceipt(key), status: 'unconfirmed', message: '课表推送结果待核对，请先查看目标平台。' });
+      }
+      if (attempted) save({ status: 'failed', message: messageOf(error) });
+      throw error;
+    }
+  }
+
   saveJob(input) {
     const route = this.#route(input);
     const name = typeof input.name === 'string' ? input.name.trim() : '';
     const { limit, skip, interval } = input;
-    if (!name || name.length > 70 || !Number.isSafeInteger(limit) || limit < 1 || limit > maxActivities ||
-        !Number.isSafeInteger(skip) || skip < 0 || skip > 1000 || ![0, 15, 30, 60].includes(interval)) {
-      throw new WorkspaceError(400, '请填写任务名称、同步数量、跳过数量和检测间隔。');
+    const mode = input.mode ?? (limit !== undefined || skip !== undefined ? 'recent' : 'all');
+    const activityType = input.activityType ?? 'all';
+    if (!name || name.length > 70 || !['all', 'recent'].includes(mode) || ![0, 15, 30, 60].includes(interval) ||
+        !['all', 'cycling'].includes(activityType) || (mode === 'recent' && activityType !== 'all') ||
+        (mode === 'recent' && (!Number.isSafeInteger(limit) || limit < 1 || limit > maxActivities ||
+          !Number.isSafeInteger(skip) || skip < 0 || skip > 1000))) {
+      throw new WorkspaceError(400, '请检查任务名称、同步范围和检测间隔。');
     }
     const old = input.id && this.store.jobs().find(job => job.id === input.id);
     if (input.id && !old) throw new WorkspaceError(404, '未找到该同步任务。');
-    const job = { ...route, id: old?.id || randomUUID(), name, limit, skip, interval,
+    if (old && this.busy && this.#run.jobId === old.id) throw new WorkspaceError(409, '请先停止正在运行的任务。');
+    const sameRoute = old?.source === route.source && (old.activityType ?? 'all') === activityType &&
+      old.targets.length === route.targets.length &&
+      old.targets.every(target => route.targets.includes(target));
+    const job = { ...route, id: old?.id || randomUUID(), name, mode, activityType, interval,
+      ...(mode === 'recent' ? { limit, skip } : { historyScannedAt: sameRoute ? old.historyScannedAt || null : null }),
       nextRun: interval ? Date.now() + interval * 60_000 : null, lastRun: old?.lastRun || null };
     this.store.saveJob(job);
     return job;
@@ -313,7 +431,17 @@ export class SyncWorkspace {
     return { message: '已允许下次重传。' };
   }
 
-  start(input) {
+  start(input) { return this.#start(input); }
+
+  verifyGarminReplay({ id, receiptId, targetActivityId }) {
+    if (!safeId(id) || typeof receiptId !== 'string' || !/^[a-f0-9]{64}$/.test(receiptId) ||
+        typeof targetActivityId !== 'string' || !/^[1-9]\d{0,19}$/.test(targetActivityId)) {
+      throw new WorkspaceError(400, '请提供国区活动 ID、已确认回执编号和国际区活动 ID。');
+    }
+    return this.#start({ source: 'cn', targets: ['com'], ids: [id] }, { receiptId, targetActivityId });
+  }
+
+  #start(input, verification) {
     if (this.busy) throw new WorkspaceError(409, '有同步任务正在运行。');
     const job = input.jobId && this.store.jobs().find(item => item.id === input.jobId);
     if (input.jobId && !job) throw new WorkspaceError(404, '未找到该同步任务。');
@@ -326,9 +454,11 @@ export class SyncWorkspace {
           ids.some(id => !seen?.has(id))) throw new WorkspaceError(400, '请从已读取的列表选择 1–50 条活动。');
       selected = ids.map(id => seen.get(id));
     }
-    this.#run = { id: randomUUID(), jobId: job?.id || null, name: job?.name || '手动同步', status: 'running',
-      started: new Date().toISOString(), stopRequested: false, confirmed: 0, skipped: 0, failed: 0, unconfirmed: 0, logs: [] };
-    this.#pending = this.#execute(route, selected, job).catch(() => {
+    this.#run = { id: randomUUID(), jobId: job?.id || null, name: job?.name || (verification ? '重启去重验收' : '手动同步'), status: 'running',
+      started: new Date().toISOString(), stopRequested: false, confirmed: 0, skipped: 0, failed: 0, unconfirmed: 0, guided: 0,
+      ...(job?.mode === 'all' && { activityType: job.activityType ?? 'all', scanned: 0, matched: 0, unclassified: 0 }),
+      logs: [] };
+    this.#pending = this.#execute(route, selected, job, verification).catch(() => {
       this.#run.status = 'failed';
       this.#log('本机存储写入失败。请检查运行记录和目标平台后再试。', 'error');
     }).finally(() => { this.#pending = null; });
@@ -375,20 +505,52 @@ export class SyncWorkspace {
     return [...items.values()].slice(job.skip, need);
   }
 
+  async *#scanHistory(source) {
+    const seen = new Set();
+    const native = source === 'blackbird' && this.sources.historyPage;
+    const cursors = new Set();
+    for (let position = native ? '' : 0; position !== null && !this.#run.stopRequested;) {
+      let page;
+      if (native) {
+        this.#require(source);
+        try { page = await this.sources.historyPage(source, this.#credentials.get(source), position || null); }
+        catch (error) { await this.#invalidate(error, source); throw error; }
+        if (!Array.isArray(page?.activities) || page.activities.some(item => !safeId(item?.id)) ||
+            (page.nextCursor !== null && (!safeId(page.nextCursor) || cursors.has(page.nextCursor)))) {
+          throw new WorkspaceError(502, '来源返回的历史列表或游标不正确。');
+        }
+        cursors.add(page.nextCursor);
+      } else page = await this.list({ source, start: position }, false);
+      for (const activity of page.activities) {
+        if (seen.has(activity.id)) continue;
+        seen.add(activity.id);
+        yield activity;
+      }
+      position = native ? page.nextCursor : page.nextStart;
+    }
+  }
+
   #entry(route, activity, target) {
-    const targetAccount = this.#scope(target);
-    const key = digest(route.source, this.#scope(route.source), activity.id, target, targetAccount);
+    const guided = this.platforms.get(target).guided;
+    const sourceAccount = this.#scope(route.source);
+    const targetAccount = guided ? 'guided' : this.#scope(target);
+    const key = digest(route.source, sourceAccount, activity.id, target, targetAccount);
     const old = this.store.receipt(key);
-    const unstableTarget = !this.#stable(target);
+    const unstableTarget = !guided && !this.#stable(target);
     const unstableIdentity = !this.#stable(route.source) || unstableTarget;
     const blocked = !durable.has(old?.status) && this.store.protectedReceipt(route.source, activity.id, target, key, unstableIdentity);
-    return { key, old, blocked, receipt: { source: route.source, sourceId: activity.id,
+    const reverse = !guided && !durable.has(old?.status) && this.store.importedFrom(route.source, activity.id, sourceAccount, target, targetAccount);
+    return { key, old, blocked, reverse, receipt: { source: route.source, sourceId: activity.id,
       target, targetScope: digest('receipt-target', target, targetAccount), unstableTarget,
       unstableIdentity, name: activity.name, status: 'sending', message: '已开始发送，结果待确认。' } };
   }
 
   async #send(entry, target, file, activity) {
     const { key, receipt, old } = entry;
+    if (entry.reverse) {
+      this.#log(`${activity.name} → ${this.platforms.get(target).name}：已有回执表明来自该账号，已跳过回传。`);
+      return 'skipped';
+    }
     if (entry.blocked) {
       this.#log(`${activity.name} → ${this.platforms.get(target).name}：曾用其他连接发送，先在记录中心核对，已跳过。`);
       return 'skipped';
@@ -400,7 +562,7 @@ export class SyncWorkspace {
         this.#log(`${activity.name} → ${this.platforms.get(target).name}：已通过活动编号重新核对。`);
         return 'confirmed';
       }
-      this.#log(`${activity.name} → ${this.platforms.get(target).name}：${old.status === 'confirmed' || old.status === 'duplicate'
+      this.#log(`${activity.name} → ${this.platforms.get(target).name}：['confirmed', 'duplicate', 'guided'].includes(old.status)
         ? '已有记录，跳过' : '上次上传结果待核对，已拦截重传'}。`);
       return 'skipped';
     }
@@ -431,6 +593,14 @@ export class SyncWorkspace {
       outbound = file.convertedFit;
       this.#log(`${activity.name}：已生成 FIT 供目标上传，原始 GPX 已保留。`);
     }
+    if (this.platforms.get(target).guided) {
+      const { validFit } = await import('./garmin-browser.mjs');
+      if (!validFit(outbound.data)) throw new WorkspaceError(422, 'FIT 完整性校验失败，无法准备 Keep 导入。');
+      this.store.saveReceipt(key, { ...receipt, fileId: file.fileId, status: 'guided',
+        message: '请下载 FIT，在手机 Keep App 的「运动数据文件导入」中选择文件。' });
+      this.#log(`${activity.name} → Keep：FIT 已准备好，请在记录中心下载并手动导入。`);
+      return 'guided';
+    }
     let attempted = false;
     const beforeUpload = () => {
       if (this.#run.stopRequested) throw new WorkspaceError(409, '任务已请求停止。');
@@ -442,7 +612,7 @@ export class SyncWorkspace {
       let result;
       if (regions.has(target)) {
         const imported = await this.garmin.upload(target, outbound, {
-          beforeUpload,
+          beforeUpload, activity,
           onImported: ({ activityId, url }) => {
             this.store.saveReceipt(key, {
               ...receipt, fileId: file.fileId, activityId, url, status: 'unconfirmed', message: '已收到活动编号，等待目标读回。',
@@ -484,20 +654,34 @@ export class SyncWorkspace {
     }
   }
 
-  async #execute(route, selected, job) {
+  async #execute(route, selected, job, verification) {
+    const fullHistory = job?.mode === 'all';
     try {
-      const items = selected || await this.#selectForJob(job);
-      this.#log(`读取到 ${items.length} 条待处理活动。`);
+      const items = fullHistory ? this.#scanHistory(route.source) : selected || await this.#selectForJob(job);
+      this.#log(fullHistory ? (job.historyScannedAt ? '增量同步：检查来源列表，已有回执的活动不会重传。' : '首次同步：逐页读取全部历史活动，已有回执的活动不会重传。')
+        : `读取到 ${items.length} 条待处理活动。`);
       let consecutiveDownload406s = 0;
-      for (const activity of items) {
+      for await (const activity of items) {
         if (this.#run.stopRequested) break;
+        if (fullHistory) {
+          const sport = sportGroup(route.source, activity);
+          this.#run.scanned++;
+          if (sport === 'unknown') this.#run.unclassified++;
+          if (this.#run.activityType === 'cycling' && sport !== 'cycling') continue;
+          this.#run.matched++;
+        }
         let file;
         let downloadError;
         for (const target of route.targets) {
           if (this.#run.stopRequested) break;
           const entry = this.#entry(route, activity, target);
+          if (verification && (entry.key !== verification.receiptId || entry.old?.status !== 'confirmed' ||
+              entry.old.activityId !== verification.targetActivityId)) {
+            this.#run.failed++;
+            throw new WorkspaceError(409, '当前账号下没有与预期国际区活动 ID 一致的已确认回执。验收已停止。');
+          }
           try {
-            if (!entry.blocked && !durable.has(entry.old?.status)) {
+            if (!entry.blocked && !entry.reverse && !durable.has(entry.old?.status)) {
               if (!file) {
                 if (downloadError) throw downloadError;
                 this.#log(`下载原始文件：${activity.name}`);
@@ -538,8 +722,15 @@ export class SyncWorkspace {
       this.#log(messageOf(error), 'error');
     } finally {
       this.#run.finished = new Date().toISOString();
+      if (fullHistory) {
+        const { status, activityType, scanned, matched, unclassified } = this.#run;
+        const outcome = status === 'finished' ? '完成' : status === 'stopped' ? '已停止' : '中断';
+        const unknown = activityType === 'cycling' && unclassified ? `，跳过运动类型未识别的 ${unclassified} 条` : '';
+        this.#log(`历史扫描${outcome}：已检查 ${scanned} 条，符合范围 ${matched} 条${unknown}。`);
+      }
       if (job) {
-        this.store.saveJob({ ...job, lastRun: this.#run.finished,
+        const historyScannedAt = job.mode === 'all' && !job.historyScannedAt && this.#run.status === 'finished' ? this.#run.finished : job.historyScannedAt;
+        this.store.saveJob({ ...job, ...(job.mode === 'all' && { historyScannedAt }), lastRun: this.#run.finished,
           nextRun: job.interval ? Date.now() + job.interval * 60_000 : null });
       }
       this.store.saveRun(this.#run);
@@ -550,7 +741,7 @@ export class SyncWorkspace {
     this.#timer = setInterval(() => {
       if (this.busy || this.isBusy()) return;
       const job = this.store.jobs().find(item => item.nextRun && item.nextRun <= Date.now() &&
-        [item.source, ...item.targets].every(id => this.#ready(id)));
+        this.#ready(item.source) && item.targets.every(id => this.platforms.get(id)?.guided || this.#ready(id)));
       if (job) this.start({ jobId: job.id });
     }, 15_000);
     this.#timer.unref();

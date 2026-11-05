@@ -1,0 +1,94 @@
+:root {
+  font-family: system-ui, -apple-system, "Microsoft YaHei UI", sans-serif;
+  color: #182b45;
+  background: #f5f8fc;
+  font-synthesis: none;
+}
+
+.auth-page { margin: 0; }
+.auth-page *, .auth-page *::before, .auth-page *::after { box-sizing: border-box; }
+.auth-page [hidden] { display: none; }
+
+.auth-layout {
+  display: grid;
+  align-content: center;
+  gap: 1rem;
+  min-height: 100vh;
+  min-height: 100dvh;
+  max-width: 30rem;
+  margin-inline: auto;
+  padding: 2rem 1rem;
+}
+
+.auth-brand { display: flex; align-items: center; gap: .625rem; }
+.auth-brand strong, .auth-brand span { display: block; }
+.auth-brand span { margin-top: .125rem; color: #506479; font-size: .8125rem; }
+
+.auth-panel {
+  padding: clamp(1rem, 6vw, 2rem);
+  border: 1px solid #dce6f0;
+  border-radius: 1rem;
+  background: #fff;
+}
+
+.auth-panel h1 { margin: 0; font-size: 1.5rem; text-wrap: balance; }
+.auth-panel p { text-wrap: pretty; }
+.auth-panel > p:first-of-type { margin: .625rem 0 1.5rem; color: #506479; }
+.auth-panel form, .auth-field { display: grid; gap: .5rem; }
+.auth-panel form { gap: 1rem; }
+.auth-field { font-weight: 600; }
+.auth-rules { margin: 0; color: #506479; font-size: .875rem; }
+
+.auth-field input, .auth-primary, .auth-switch button {
+  min-height: 44px;
+  font: inherit;
+}
+
+.auth-field input {
+  width: 100%;
+  padding: .5rem .75rem;
+  border: 1px solid #a9bed4;
+  border-radius: .5rem;
+  background: #fff;
+  color: inherit;
+  font-weight: 400;
+}
+
+.auth-page :is(input, button):focus-visible {
+  outline: 2px solid #1965b5;
+  outline-offset: 3px;
+}
+
+.auth-primary {
+  border: 0;
+  border-radius: .5rem;
+  background: #1965b5;
+  color: #fff;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.auth-primary:hover:enabled { background: #124b88; }
+.auth-primary:disabled { opacity: .72; }
+#auth-retry { width: 100%; }
+.auth-switch { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem; margin: .5rem 0 0; }
+.auth-switch > span { color: #506479; }
+
+.auth-switch button {
+  padding: .25rem .375rem;
+  border: 0;
+  border-radius: .375rem;
+  background: transparent;
+  color: #124b88;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.auth-error {
+  margin: 0;
+  padding: .625rem .75rem;
+  border: 1px solid #f5d4d3;
+  border-radius: .5rem;
+  background: #fff2f1;
+  color: #963c32;
+}

@@ -1,0 +1,9 @@
+**
+!package.json
+!package-lock.json
+!*.mjs
+!public/
+!public/**
+public/ui/
+!ui/
+!ui/**

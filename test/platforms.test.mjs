@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
+import { unzipSync } from 'fflate';
 import { PlatformUploads, PlatformError, PLATFORM_DEFINITIONS, validateCredential } from '../platforms.mjs';
 
 function crc(bytes) {
@@ -11,11 +12,11 @@ function crc(bytes) {
   }
   return value;
 }
-function fit() {
-  const bytes = Buffer.alloc(30);
+function fit(length = 30) {
+  const bytes = Buffer.alloc(length);
   bytes[0] = 12;
   bytes[1] = 16;
-  bytes.writeUInt32LE(16, 4);
+  bytes.writeUInt32LE(length - 14, 4);
   bytes.write('.FIT', 8);
   bytes.writeUInt16LE(crc(bytes.subarray(0, -2)), bytes.length - 2);
   return bytes;
@@ -25,9 +26,11 @@ const credentials = {
   wahoo: { token: 'synthetic-token' },
   suunto: { token: 'synthetic-token', subscriptionKey: 'synthetic-subscription' },
   xingzhe: { sessionId: 'synthetic-session', csrfToken: 'synthetic-csrf' },
-  igpsport: { token: 'synthetic-token' }, magene: { token: 'synthetic-token' },
+  igpsport: { token: 'synthetic-token' }, igpsport_int: { token: 'synthetic-int-token' }, magene: { token: 'synthetic-token' },
   blackbird: { cookie: 'session=synthetic-session' }, giant: { token: 'synthetic-token' },
   outbase: { sessionId: 'synthetic-session' }, komoot: { email: 'synthetic@example.com', token: 'synthetic-token' },
+  coros_cn: { token: 'synthetic-token' }, coros_int: { token: 'synthetic-token', region: '3' },
+  cycity: { token: 'synthetic-token' },
 };
 const input = (platform, extra = {}) => ({ platform, credential: credentials[platform], data: fit(), fileName: 'source.fit', activity: { id: 'synthetic-source', name: '合成骑行', type: 'cycling' }, ...extra });
 
@@ -51,14 +54,14 @@ function harness(steps, options = {}) {
 }
 
 test('every offered platform has explicit credential fields and formats', () => {
-  assert.equal(PLATFORM_DEFINITIONS.length, 10);
-  assert.equal(new Set(PLATFORM_DEFINITIONS.map(item => item.id)).size, 10);
+  assert.equal(PLATFORM_DEFINITIONS.length, 14);
+  assert.equal(new Set(PLATFORM_DEFINITIONS.map(item => item.id)).size, 14);
   for (const item of PLATFORM_DEFINITIONS) {
     assert.ok(item.fields.some(field => field.required));
     assert.ok(item.formats.includes('fit'));
     assert.deepEqual(validateCredential(item.id, { ...credentials[item.id], unexpected: 'discard-me' }), credentials[item.id]);
   }
-  assert.throws(() => validateCredential('coros_cn', {}), error => error.code === 'unsupported');
+  assert.throws(() => validateCredential('keep', {}), error => error.code === 'unsupported');
   assert.throws(() => validateCredential('wahoo', {}), error => error.status === 400);
   assert.throws(() => validateCredential('wahoo', { token: 'token\r\nInjected: header' }), error => error.code === 'credential');
   assert.throws(() => validateCredential('xingzhe', { sessionId: 'sessionid=value; extra=x' }), error => error.code === 'credential');
@@ -108,6 +111,108 @@ test('Xingzhe sends original FIT with MD5 and requires parsed workout receipt', 
   assert.equal(calls[0].headers['X-CSRFToken'], 'synthetic-csrf');
   assert.equal(calls[0].body.get('md5'), createHash('md5').update(fit()).digest('hex'));
   assert.deepEqual(Buffer.from(await calls[0].body.get('fit_file').arrayBuffer()), fit());
+});
+
+const corosAccount = { data: { result: '0000', data: { userId: '123456' } } };
+const corosRegistration = { data: { result: '0000', data: { id: 'task-1' } } };
+function corosSts(china, bucketOverride) {
+  const bucket = china ? 'coros-oss' : 'eu-coros';
+  const region = china ? 'oss-cn-beijing' : 'eu-central-1';
+  const service = china ? 'aliyun' : 'aws';
+  const credentials = {
+    Bucket: bucketOverride || bucket, Region: region, AccessKeyId: 'mock-storage-id',
+    ...(china ? { AccessKeySecret: 'mock-storage-secret', SecurityToken: 'mock-storage-token' }
+      : { SecretAccessKey: 'mock-storage-secret', SessionToken: 'mock-storage-token' })
+  };
+  const encoded = Buffer.from(JSON.stringify(credentials)).toString('base64');
+  return { data: { code: 200, data: { service, credentials: encoded.slice(0, 5) + '9y78gpoERW4lBNYL' + encoded.slice(5) } } };
+}
+
+test('COROS China and international use their own Training Hub session and upload original FIT inside a ZIP', async () => {
+  for (const platform of ['coros_cn', 'coros_int']) {
+    const china = platform === 'coros_cn';
+    const site = china ? 'trainingcn.coros.com' : 'trainingeu.coros.com';
+    const api = china ? 'teamcnapi.coros.com' : 'teameuapi.coros.com';
+    const storage = china ? 'coros-oss.oss-cn-beijing.aliyuncs.com' : 'eu-coros.s3.eu-central-1.amazonaws.com';
+    const { uploader, calls, remaining } = harness([
+      corosAccount, corosSts(china), { status: 204 }, corosRegistration,
+      { data: { result: '0000', data: [{ id: 'other-task', status: 2 }, { id: 'task-1', status: 1 }] } },
+      { data: { result: '0000', data: [{ id: 'task-1', status: 2, errorSize: 0 }] } }
+    ]);
+    let reservations = 0;
+    const bytes = fit(21 * 1024);
+    const result = await uploader.upload(input(platform, { data: bytes, beforeUpload: () => {
+      assert.equal(calls.length, 2); reservations++;
+    } }));
+    assert.equal(reservations, 1);
+    assert.equal(remaining(), 0);
+    assert.equal(result.status, 'accepted');
+    assert.equal(result.activityId, undefined);
+    assert.match(result.message, /task-1 已处理/);
+    assert.equal(calls[0].url, `https://${api}/account/query`);
+    assert.equal(calls[1].url, `https://${site}/api/proxy/oss/sts`);
+    assert.equal(calls[1].headers.Cookie, `CPL-coros-region=${china ? 2 : 3}; CPL-coros-token=synthetic-token`);
+    assert.equal(calls[2].method, 'PUT');
+    const zip = calls[2].body;
+    const md5 = createHash('md5').update(zip).digest('hex');
+    const key = `fit_zip/123456/${md5}.zip`;
+    assert.equal(calls[2].url, `https://${storage}/${key}`);
+    assert.equal(calls[2].headers.Cookie, undefined);
+    assert.equal(calls[2].headers.accesstoken, undefined);
+    assert.deepEqual(Buffer.from(unzipSync(zip)['source.fit']), bytes);
+    if (china) {
+      const date = calls[2].headers.Date;
+      const signature = createHmac('sha1', 'mock-storage-secret').update(
+        `PUT\n\napplication/octet-stream\n${date}\nx-oss-security-token:mock-storage-token\n/coros-oss/${key}`
+      ).digest('base64');
+      assert.equal(calls[2].headers.Authorization, `OSS mock-storage-id:${signature}`);
+    } else {
+      assert.match(calls[2].headers.Authorization, /^AWS4-HMAC-SHA256 Credential=mock-storage-id\/\d{8}\/eu-central-1\/s3\/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-security-token, Signature=[a-f0-9]{64}$/);
+      assert.equal(calls[2].headers['x-amz-content-sha256'], createHash('sha256').update(zip).digest('hex'));
+    }
+    assert.equal(calls[3].url, `https://${api}/activity/fit/import`);
+    assert.equal(calls[3].headers.accesstoken, 'synthetic-token');
+    const params = JSON.parse(calls[3].body.get('jsonParameter'));
+    assert.deepEqual(params, {
+      source: 1, timezone: -new Date().getTimezoneOffset() / 15 || 0, bucket: china ? 'coros-oss' : 'eu-coros',
+      md5, size: zip.length, object: key, serviceName: china ? 'aliyun' : 'aws', oriFileName: 'source.zip'
+    });
+    assert.equal(calls[4].url, `https://${api}/activity/fit/getImportSportList`);
+    assert.deepEqual(JSON.parse(calls[4].body), { size: 10 });
+  }
+});
+
+test('COROS rejects invalid storage identity before staging and preserves ambiguity after registration', async () => {
+  const data = fit(21 * 1024);
+  const invalid = harness([corosAccount, corosSts(true, 'other-bucket')]);
+  await assert.rejects(invalid.uploader.upload(input('coros_cn', { data })), error =>
+    error.code === 'storage' && !error.mayHaveUploaded);
+  assert.equal(invalid.calls.length, 2);
+  const noJob = harness([corosAccount, corosSts(true), { status: 204 }, { data: { result: '0000', data: {} } }]);
+  await assert.rejects(noJob.uploader.upload(input('coros_cn', { data })), error =>
+    error.code === 'unconfirmed' && error.mayHaveUploaded);
+  assert.equal(noJob.calls.length, 4);
+  const rejected = harness([corosAccount, corosSts(true), { status: 204 }, corosRegistration,
+    { data: { result: '0000', data: [{ id: 'task-1', status: 2, errorSize: 1, message: 'private response' }] } }
+  ]);
+  await assert.rejects(rejected.uploader.upload(input('coros_cn', { data })), error =>
+    error.code === 'unconfirmed' && error.mayHaveUploaded && !error.message.includes('private response'));
+});
+
+test('CyCity sends a FIT to its parser and registers only that parsed payload', async () => {
+  const parsed = { startTime: '2026-10-25 18:00:00', movingDistance: 23.5 };
+  const { uploader, calls } = harness([{ data: { code: 200, data: parsed } }, { data: { code: 200 } }]);
+  const receipt = await uploader.upload(input('cycity'));
+  assert.equal(receipt.status, 'accepted');
+  assert.equal(receipt.activityId, undefined);
+  assert.equal(calls[0].url, 'https://cycity.cc/api/mobile/cycling/import');
+  assert.equal(calls[0].headers.Authorization, 'Bearer synthetic-token');
+  assert.deepEqual(Buffer.from(await calls[0].body.get('file').arrayBuffer()), fit());
+  assert.equal(calls[1].url, 'https://cycity.cc/api/mobile/cycling/uploadImportData');
+  assert.deepEqual(JSON.parse(calls[1].body), parsed);
+  const malformed = harness([{ data: { code: 200, data: [] } }]);
+  await assert.rejects(malformed.uploader.upload(input('cycity')), error => error.code === 'unconfirmed');
+  assert.equal(malformed.calls.length, 1);
 });
 
 test('Xingzhe duplicate is structural and error text cannot impersonate it', async () => {
@@ -166,6 +271,26 @@ test('iGPSPORT rejects non-HTTPS, credentialed and unexpected dynamic storage ho
     assert.equal(reserved, false);
     assert.equal(calls.length, 1);
   }
+});
+
+test('iGPSPORT international sends the file and import metadata only through its own region', async () => {
+  const { uploader, calls } = harness([
+    { data: { code: 0, data: { signedUrl: 'https://igpsport.oss-cn-hongkong.aliyuncs.com/fit?signature=synthetic', ossId: 'int-oss' } } },
+    { status: 204 }, { data: { code: 0, data: { id: 'only-a-job-id' } } }
+  ]);
+  const result = await uploader.upload(input('igpsport_int', { fileName: `${'x'.repeat(60)}.fit` }));
+  assert.equal(result.status, 'accepted');
+  assert.equal(result.activityId, undefined);
+  assert.equal(calls[0].url, 'https://prod.en.igpsport.com/service/sportg/third-party-server/oss/getSignedUrl?fileExtension=.fit');
+  assert.equal(calls[0].headers.Authorization, 'Bearer synthetic-int-token');
+  assert.equal(calls[0].headers.Origin, 'https://app.igpsport.com');
+  assert.equal(calls[0].headers['X-Platform'], 'web');
+  assert.equal(calls[1].headers.Authorization, undefined);
+  assert.equal(calls[1].headers['Content-Type'], '');
+  assert.deepEqual(calls[1].body, fit());
+  assert.equal(calls[2].url, 'https://prod.en.igpsport.com/service/web-gateway/web-analyze/activity/uploadByOss');
+  assert.equal(calls[2].headers.Authorization, 'Bearer synthetic-int-token');
+  assert.deepEqual(JSON.parse(calls[2].body), { fileName: `${'x'.repeat(50)}.fit`, ossName: 'int-oss' });
 });
 
 test('Outbase registers the exact uploaded file and only marks registration accepted', async () => {

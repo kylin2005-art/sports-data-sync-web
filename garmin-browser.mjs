@@ -69,7 +69,7 @@ function activityId(value) {
   return /^[1-9][0-9]{0,19}$/.test(String(value)) ? String(value) : null;
 }
 
-function activityRows(data) {
+export function activityRows(data) {
   if (!Array.isArray(data)) throw new GarminError('佳明活动列表格式无效，未将错误当作空列表。');
   return data.map(row => {
     const id = row && activityId(row.activityId);
@@ -109,7 +109,7 @@ export function validFit(bytes) {
   return crc(bytes, bytes.length) === 0;
 }
 
-function originalFit(base64) {
+export function originalFit(base64) {
   const bytes = Buffer.from(base64, 'base64');
   if (validFit(bytes)) return bytes;
   if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new GarminError('佳明下载内容不是有效 FIT 或 ZIP，已停止上传。');
@@ -131,7 +131,7 @@ function originalFit(base64) {
   return Buffer.from(fit);
 }
 
-function importedId(data, status) {
+export function importedId(data, status) {
   const detail = data?.detailedImportResult;
   const failures = detail?.failures;
   if (Array.isArray(failures) && failures.length) {

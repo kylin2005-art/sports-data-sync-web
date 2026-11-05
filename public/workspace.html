@@ -5,13 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>运动数据同步 · 本机版</title>
+  <link rel="icon" href="/workspace-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/workspace.css">
+  <link rel="stylesheet" href="/ui/workspace-ui.css">
+  <link rel="stylesheet" href="/ui/ride-map.css">
+  <script type="module" src="/ui/workspace-ui.js"></script>
   <script src="/workspace.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到主要内容</a>
   <div class="shell workspace">
+    <div id="workspace-chrome">
     <header class="page-header">
       <div class="brand"><span class="brand-mark" aria-hidden="true">↗</span><span>运动数据同步</span></div>
       <span class="local-badge"><span class="dot" aria-hidden="true"></span>本机版</span>
@@ -20,6 +25,7 @@
       <a href="#sync" data-tab="sync">数据同步</a><a href="#accounts" data-tab="accounts">平台账号</a>
       <a href="#jobs" data-tab="jobs">定时任务</a><a href="#records" data-tab="records">记录中心</a><a href="#tracks" data-tab="tracks">轨迹工具</a>
     </nav>
+    </div>
     <main id="main" tabindex="-1">
       <p id="notice" class="notice" role="status" hidden></p>
       <section data-panel="sync">
@@ -27,6 +33,7 @@
           <div><p class="eyebrow">SYNC WORKSPACE</p><h1>运动活动同步</h1><p class="intro-copy">选择一个来源和多个目标，按活动查看处理结果。</p></div>
           <button type="button" id="garmin-preset" class="button button-secondary">佳明中国 → 国际</button>
         </div>
+        <div id="sync-overview"></div>
         <div class="flow-grid">
           <div class="panel">
             <h2><span class="step">01</span>数据来源</h2>
@@ -47,56 +54,174 @@
           <fieldset class="activity-fieldset" id="activity-fieldset"><legend class="sr-only">活动列表</legend><div id="activities"></div></fieldset>
           <div class="action-row"><button id="next" class="button button-quiet" type="button" hidden>下一页</button>
             <button id="download-test" class="button button-secondary" type="button" disabled>测试下载</button>
-            <button id="run" class="button button-primary" type="button" disabled>开始同步</button></div>
+            <button id="run" class="button button-primary" type="button" disabled>同步所选</button></div>
+          <p class="muted full-ride-note">最近 20 条是手动列表的首页。要一次同步全部历史骑行，请用全量任务。</p>
+          <div class="action-row"><button id="setup-full-ride" class="button button-secondary" type="button" disabled>设置全量骑行同步</button></div>
         </div>
       </section>
 
       <section data-panel="accounts" hidden>
-        <div class="workspace-intro"><div><p class="eyebrow">CONNECTIONS</p><h1>平台账号</h1><p class="intro-copy">看到「已保存」后即可关闭官网登录窗口。会话失效时，回到这里重新连接。</p></div></div>
+        <div class="workspace-intro"><div><p class="eyebrow">CONNECTIONS</p><h1>平台账号</h1><p id="accounts-intro" class="intro-copy">展开平台卡片里的「接入说明」，按步骤连接账号。网页授权显示「已保存」后，可以关闭平台官网窗口。</p></div><div id="garmin-authorization"></div></div>
         <div id="accounts" class="platform-grid"></div>
-        <details class="panel space"><summary>查看全部平台的接入状态</summary><div id="coverage" class="coverage"></div></details>
+        <details class="panel space"><summary>查看全部平台的接入状态与文件导入方式</summary><div id="coverage" class="coverage"></div>
+          <p class="muted">从平台导出的 FIT 或 GPX 可以先在<a href="#records">记录中心</a>导入，再以「本机文件」作为来源同步。</p>
+        </details>
       </section>
 
       <section data-panel="jobs" hidden>
-        <div class="workspace-intro"><div><p class="eyebrow">AUTOMATION</p><h1>同步任务</h1><p class="intro-copy">保存常用路线，手动运行或按 15–60 分钟间隔检查。定时同步只需本机服务运行，账号会话保持有效。</p></div></div>
+        <div class="workspace-intro"><div><p class="eyebrow">AUTOMATION</p><h1>同步任务</h1><p class="intro-copy">保存常用路线，手动运行或按 15–60 分钟间隔检查。定时同步需要工作台服务运行，账号会话保持有效。</p></div></div>
         <form id="job-form" class="panel">
           <h2 id="job-title">新建任务</h2>
           <div class="form-grid">
             <label class="field">任务名称<input id="job-name" maxlength="70" required placeholder="例如 佳明跨区同步"></label>
             <label class="field">数据来源<select id="job-source"></select></label>
-            <label class="field">同步条数<input id="job-limit" type="number" value="20" min="1" max="50" required></label>
-            <label class="field">跳过最近<input id="job-skip" type="number" value="0" min="0" max="1000" required></label>
+            <label class="field">同步范围<select id="job-mode" aria-describedby="job-mode-help"><option value="all">首次全量，之后增量</option><option value="recent">仅同步最近指定条数</option></select></label>
+            <label class="field">运动类型<select id="job-activity-type" aria-describedby="job-mode-help"><option value="all">全部运动</option><option value="cycling">仅骑行</option></select></label>
+            <label class="field" hidden>同步条数<input id="job-limit" type="number" value="20" min="1" max="50" required disabled></label>
+            <label class="field" hidden>跳过最近<input id="job-skip" type="number" value="0" min="0" max="1000" required disabled></label>
             <label class="field">检测间隔<select id="job-interval"><option value="0">仅手动</option><option value="15">每 15 分钟</option><option value="30">每 30 分钟</option><option value="60">每 60 分钟</option></select></label>
           </div>
+          <p class="muted" id="job-mode-help">首次读完来源历史。之后检查列表，只传新增活动，并重试明确失败的记录。</p>
           <p class="field-label">同步目标</p><div id="job-targets" class="choices"></div>
           <div class="action-row"><button type="submit" class="button button-primary">保存任务</button><button type="button" id="job-reset" class="button button-quiet" hidden>取消编辑</button></div>
         </form>
         <div class="panel space"><h2>已保存的任务</h2><div id="job-list" class="record-list"></div></div>
+        <div class="panel space">
+          <h2>Intervals.icu 训练课表</h2>
+          <p class="muted">下载或推送计划中的训练。课表与已完成的运动记录分开保存。</p>
+          <form id="workout-form">
+            <div class="flow-grid">
+              <label class="field">起始日期<input id="workout-oldest" type="date" required></label>
+              <label class="field">结束日期<input id="workout-newest" type="date" required></label>
+            </div>
+            <div class="action-row"><button type="submit" class="button button-secondary">读取课表</button></div>
+          </form>
+          <div id="workout-list" class="record-list" aria-live="polite"></div>
+        </div>
       </section>
 
       <section data-panel="records" hidden>
         <div class="workspace-intro"><div><p class="eyebrow">ACTIVITY LIBRARY</p><h1>记录中心</h1><p class="intro-copy">下载原始文件，查看每条活动发送到各平台后的状态。</p></div></div>
         <div class="panel">
-          <div class="panel-top"><h2>本机活动文件</h2><label class="button button-secondary upload-label">导入 FIT / GPX<input id="file-input" type="file" multiple accept=".fit,.gpx" class="sr-only"></label></div>
-          <label class="field search-field">筛选本机记录<input id="file-filter" type="search" placeholder="搜索活动名称或文件名"></label>
+          <div class="panel-top"><h2>活动文件</h2><label class="button button-secondary upload-label">导入 FIT / GPX<input id="file-input" type="file" multiple accept=".fit,.gpx" class="sr-only"></label></div>
+          <label class="field search-field">筛选文件<input id="file-filter" type="search" placeholder="搜索活动名称或文件名"></label>
           <div id="file-list" class="record-list"></div>
         </div>
         <div class="panel space"><h2>同步记录</h2><div id="history" class="record-list"></div></div>
       </section>
 
       <section data-panel="tracks" hidden>
-        <div class="workspace-intro"><div><p class="eyebrow">ROUTE TOOLS</p><h1>轨迹工具</h1><p class="intro-copy">从本机活动库选择有定位数据的轨迹。</p></div></div>
-        <div class="flow-grid">
-          <div class="panel">
-            <h2>选择轨迹</h2><div id="track-files" class="record-list"></div>
-            <div class="action-row"><button type="button" id="draw-track" class="button button-secondary">预览轨迹</button><button type="button" id="merge-track" class="button button-secondary">合并为 GPX</button></div>
+        <div class="workspace-intro"><div><p class="eyebrow">ROUTE TOOLS</p><h1>轨迹工具</h1><p class="intro-copy">选择一条活动做骑行分析和分享图，或选择多条预览和合并轨迹。</p></div></div>
+        <div class="panel">
+          <h2 id="track-library-heading">骑行轨迹</h2>
+          <p class="muted" id="track-table-help">点表头可排序当前页。≈ 表示估算，— 表示文件没有可用数据。</p>
+          <div class="track-table-scroll" tabindex="0" role="region" aria-labelledby="track-library-heading">
+            <table class="track-table" aria-labelledby="track-library-heading" aria-describedby="track-table-help">
+              <thead><tr>
+                <th scope="col"><span class="sr-only">选择</span></th>
+                <th scope="col">活动</th>
+                <th scope="col" aria-sort="descending"><button type="button" data-track-sort="startTime">日期</button></th>
+                <th scope="col"><button type="button" data-track-sort="durationSeconds">骑行时间</button></th>
+                <th scope="col"><button type="button" data-track-sort="distanceM">距离 <small>km</small></button></th>
+                <th scope="col"><button type="button" data-track-sort="avgPowerW">平均功率 <small>W</small></button></th>
+                <th scope="col"><button type="button" data-track-sort="avgHeartRateBpm">平均心率 <small>bpm</small></button></th>
+                <th scope="col"><button type="button" data-track-sort="avgSpeedMps">平均速度 <small>km/h</small></button></th>
+                <th scope="col"><button type="button" data-track-sort="ascentM">累计爬升 <small>m</small></button></th>
+              </tr></thead>
+              <tbody id="track-files"></tbody>
+            </table>
           </div>
-          <div class="panel">
-            <h2>轨迹预览</h2><p id="track-info" class="muted">可叠加多条轨迹并导出透明贴纸。</p>
-            <canvas id="track-canvas" width="900" height="600" aria-label="轨迹图"></canvas>
-            <button type="button" id="track-png" class="button button-secondary" disabled>导出透明 PNG</button>
+          <div class="track-table-footer">
+            <p id="track-library-status" class="muted" role="status">正在读取轨迹…</p>
+            <div class="track-table-pages">
+              <button type="button" id="track-prev" class="button button-quiet" disabled>上一页</button>
+              <button type="button" id="track-next" class="button button-quiet" disabled>下一页</button>
+              <button type="button" id="track-retry" class="button button-quiet" hidden>重新读取</button>
+            </div>
+          </div>
+          <div class="action-row">
+            <span id="track-selection" class="muted" aria-live="polite">已选 0 条</span>
+            <button type="button" id="track-clear" class="button button-quiet" hidden>清空选择</button>
+            <button type="button" id="analyze-ride" class="button button-primary" disabled>分析并生成战报</button>
+            <button type="button" id="draw-track" class="button button-secondary" disabled>预览轨迹</button>
+            <button type="button" id="merge-track" class="button button-secondary" disabled>合并为 GPX</button>
           </div>
         </div>
+        <div class="panel space" id="track-preview" hidden>
+          <h2>轨迹预览</h2><p id="track-info" class="muted">可叠加多条轨迹并导出透明贴纸。</p>
+          <canvas id="track-canvas" width="900" height="600" aria-label="轨迹图"></canvas>
+          <button type="button" id="track-png" class="button button-secondary" disabled>导出透明 PNG</button>
+        </div>
+        <section id="ride-studio" class="ride-studio space" aria-labelledby="ride-analysis-heading" hidden>
+          <section class="panel ride-map-panel" aria-labelledby="ride-map-heading">
+            <h2 id="ride-map-heading" tabindex="-1">骑行地图</h2>
+            <p id="ride-map-description" class="muted"></p>
+            <div class="action-row">
+              <button type="button" id="ride-map-toggle" class="button button-primary" aria-controls="ride-map-view" aria-expanded="false">加载真实地图</button>
+            </div>
+            <div id="ride-map-view" hidden>
+              <div id="ride-map-controls" class="ride-map-controls">
+                <label class="field">路线着色<select id="ride-map-mode"><option value="route">路线轮廓</option><option value="speed">速度</option><option value="power">功率</option></select></label>
+                <label class="choice"><input id="ride-map-terrain" type="checkbox" checked>3D 地形</label>
+              </div>
+              <ul id="ride-map-legend" class="ride-map-legend" aria-label="路线着色图例" hidden></ul>
+              <p id="ride-map-status" class="muted" role="status"></p>
+              <div id="ride-map-canvas" aria-label="可交互的骑行地图"></div>
+            </div>
+          </section>
+          <div class="panel ride-analysis">
+            <p class="eyebrow">RIDE ANALYSIS</p>
+            <h2 id="ride-analysis-heading" tabindex="-1">单次骑行分析</h2>
+            <p id="ride-source" class="muted"></p>
+            <dl id="ride-metrics" class="ride-metrics"></dl>
+            <h3 class="ride-terrain-heading">3D 海拔轨迹</h3>
+            <p id="ride-terrain-note" class="muted"></p>
+            <canvas id="ride-terrain" width="960" height="560" aria-label="骑行路线的立体海拔轨迹" hidden></canvas>
+            <label id="ride-angle-field" class="field" hidden>旋转视角 <output id="ride-angle-value" for="ride-angle">35°</output><input id="ride-angle" type="range" min="0" max="360" value="35"></label>
+            <button type="button" id="ride-terrain-open" class="button button-secondary" hidden>全屏查看 3D</button>
+          </div>
+          <div class="panel ride-share" aria-labelledby="ride-share-heading">
+            <p class="eyebrow">RIDE EDITOR</p>
+            <h2 id="ride-share-heading">骑行战报</h2>
+            <p class="muted">选择样式和比例，预览后下载高清 PNG。</p>
+            <div class="ride-share-form">
+              <label class="field ride-title-field">战报标题<input id="ride-title" type="text" maxlength="24" placeholder="骑行战报"></label>
+              <label class="field">样式<select id="ride-theme"><option value="neon">暗夜竞速</option><option value="paper">白昼画报</option></select></label>
+              <label class="field">尺寸<select id="ride-ratio"><option value="3:4">竖版 3:4</option><option value="9:16">全屏 9:16</option></select></label>
+              <label class="field">分享图路线<select id="ride-route" aria-describedby="ride-route-note"><option value="hidden">隐藏路线</option><option value="trimmed">隐藏起终点附近</option><option value="full">完整路线</option></select></label>
+              <label class="field">路线样式<select id="ride-route-view" aria-describedby="ride-route-note" disabled><option value="3d">3D 海拔轨迹</option><option value="2d">2D 路线轮廓</option></select></label>
+              <label class="choice ride-date-choice"><input id="ride-date" type="checkbox">显示骑行日期</label>
+              <label id="ride-share-angle-field" class="field" hidden>战报旋转视角 <output id="ride-share-angle-value" for="ride-share-angle">35°</output><input id="ride-share-angle" type="range" min="0" max="360" value="35"></label>
+            </div>
+            <p id="ride-route-note" class="muted">路线和日期默认隐藏。显示轮廓后，熟悉当地路线的人仍可能认出位置。</p>
+            <div class="ride-preview"><canvas id="ride-card" width="1080" height="1440" aria-label="骑行战报图片预览"></canvas></div>
+            <div class="action-row">
+              <button type="button" id="ride-share-terrain-open" class="button button-secondary" hidden>全屏查看战报轨迹</button>
+              <button type="button" id="ride-download" class="button button-primary" disabled>下载战报 PNG</button>
+              <button type="button" id="ride-share-image" class="button button-secondary" disabled>分享战报图片</button>
+            </div>
+          </div>
+        </section>
+        <dialog id="ride-terrain-dialog" aria-labelledby="ride-terrain-dialog-title">
+          <div id="ride-terrain-viewer">
+            <div class="ride-terrain-toolbar">
+              <h2 id="ride-terrain-dialog-title">3D 海拔轨迹</h2>
+              <button type="button" id="ride-terrain-close" class="button button-secondary" autofocus>退出全屏</button>
+            </div>
+            <div class="ride-terrain-frame">
+              <canvas id="ride-terrain-full" width="1440" height="840" aria-label="全屏骑行海拔轨迹"></canvas>
+            </div>
+            <div>
+              <div class="ride-terrain-toolbar ride-terrain-actions">
+                <label class="field">全屏旋转视角 <output id="ride-full-angle-value" for="ride-full-angle">35°</output><input id="ride-full-angle" type="range" min="0" max="360" value="35"></label>
+                <label class="field">分享范围<select id="ride-terrain-scope" aria-describedby="ride-terrain-share-status"><option value="hidden">仅查看</option><option value="trimmed">隐藏起终点附近</option><option value="full">完整路线</option></select></label>
+                <button type="button" id="ride-terrain-share" class="button button-primary" disabled>分享 3D 图片</button>
+                <button type="button" id="ride-terrain-download" class="button button-secondary" disabled>下载 3D PNG</button>
+              </div>
+              <p id="ride-terrain-share-status" class="muted" role="status">选择分享范围后可分享 PNG。</p>
+            </div>
+          </div>
+        </dialog>
         <div class="panel space" aria-labelledby="recorder-title">
           <div class="panel-top"><div><h2 id="recorder-title">临时定位记录</h2><p class="muted">使用当前设备定位。记录时请保持页面开启。</p></div><label class="field">运动类型<select id="record-type"><option value="骑行">骑行</option><option value="跑步">跑步</option><option value="徒步">徒步</option></select></label></div>
           <p id="recorder-stats" class="recorder-stats" aria-live="polite">等待开始</p>
@@ -110,7 +235,7 @@
       </section>
       <noscript><p class="notice">请启用 JavaScript 后使用运动数据同步。</p></noscript>
     </main>
-    <footer><span>运动数据同步 · 本机运行</span><a href="https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform" target="_blank" rel="noopener noreferrer">原项目 ↗</a></footer>
+    <footer><span id="workspace-footer-label">运动数据同步 · 本机运行</span><a href="https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform" target="_blank" rel="noopener noreferrer">原项目 ↗</a></footer>
   </div>
   <dialog id="credential-dialog" aria-labelledby="credential-title">
     <form id="credential-form" autocomplete="off">

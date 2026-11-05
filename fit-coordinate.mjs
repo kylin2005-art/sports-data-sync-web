@@ -43,6 +43,8 @@ function inverse(lat, lon) {
   reject('坐标反算未收敛');
 }
 
+export { inverse as gcj02ToWgs84 };
+
 export function correctMageneFit(file) {
   if (!Buffer.isBuffer(file?.data) || file.data.length > 50 * 1024 * 1024 || !/\.fit$/i.test(file.fileName || '')) reject('需要不超过 50 MB 的 FIT 文件');
   if (String(file.coordinateSystem).toLowerCase().replace(/[-_]/g, '') !== 'gcj02') reject('只接受明确标记为 GCJ02 的备用文件，防止重复修正');

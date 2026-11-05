@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>登录工作台 · 运动数据同步</title>
+  <link rel="icon" href="/workspace-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/auth.css">
+  <script src="/auth.js" defer></script>
+</head>
+<body class="auth-page">
+  <main class="auth-layout">
+    <header class="auth-brand">
+      <img src="/workspace-icon.svg" alt="" width="40" height="40">
+      <div><strong>运动数据同步</strong><span id="auth-brand-context">工作台</span></div>
+    </header>
+    <section class="auth-panel" aria-labelledby="auth-title">
+      <h1 id="auth-title">登录工作台</h1>
+      <p id="auth-description" aria-live="polite">正在检查工作台设置…</p>
+      <button id="auth-retry" class="auth-primary" type="button" hidden>重试</button>
+      <form id="auth-form" method="post" action="/api/auth/login" hidden>
+        <label class="auth-field" id="auth-invite-field" hidden>
+          <span>邀请码</span>
+          <input id="auth-invite" name="invite" type="password" autocomplete="off" spellcheck="false" disabled>
+        </label>
+        <label class="auth-field">
+          <span>用户名</span>
+          <input id="auth-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+        </label>
+        <label class="auth-field">
+          <span>密码</span>
+          <input id="auth-password" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <label class="auth-field" id="auth-confirm-field" hidden>
+          <span>确认密码</span>
+          <input id="auth-confirm" type="password" autocomplete="new-password" disabled>
+        </label>
+        <p id="auth-rules" class="auth-rules" hidden>用户名为 3–32 位，以英文字母或数字开头，可包含下划线和连字符。密码至少 12 个字符。</p>
+        <p id="auth-error" class="auth-error" role="alert" hidden></p>
+        <button id="auth-submit" class="auth-primary" type="submit">登录</button>
+      </form>
+      <p class="auth-switch" id="auth-switch-row" hidden>
+        <span id="auth-switch-label">收到邀请码？</span>
+        <button id="auth-switch" type="button">使用邀请码注册</button>
+      </p>
+      <noscript><p class="auth-error">请启用 JavaScript 后登录工作台。</p></noscript>
+    </section>
+  </main>
+</body>
+</html>
