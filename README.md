@@ -2,7 +2,7 @@
 
 Sports Data Sync Web 是一个可以自托管的骑行数据工作台。它支持 Garmin Connect（佳明中国区和国际区）及多个运动平台之间的活动同步，也能把 FIT / GPX 原文件保存在自己的电脑或 NAS 上。支持 Windows 本机运行和 Docker Compose 部署，已在 Unraid 上实际安装验证。
 
-[详细使用说明](docs/使用说明.md) · [平台接入范围](#平台接入范围) · [部署与升级](#部署与升级)
+[详细使用说明](docs/使用说明.md) · [平台接入范围](#平台接入范围) · [部署与升级](#部署与升级) · [致谢](#致谢)
 
 ## 同步骑行活动
 
@@ -41,7 +41,7 @@ Sports Data Sync Web 是一个可以自托管的骑行数据工作台。它支�
 
 | 能力 | 平台 |
 | --- | --- |
-| 读取与上传 | 佳明中国区 / 国际区、iGPSPORT 中国区 / 国际区、行者、迈金、黑鸟单车、高驰中国区 / 国际区、Intervals.icu、Wahoo、Suunto、Komoot、骑行市 |
+| 读取与上传 | 佳明中国区 / 国际区、iGPSPORT 中国区 / 国际区、行者、迈金、黑鸟单车、高驰中国区 / 国际区、Intervals.icu、Wahoo、Suunto、Komoot、[CyCity（骑行 App）](https://apps.apple.com/cn/app/cycity/id6753126988) |
 | 读取活动 | 百锐腾、MyWhoosh、Zwift |
 | 读取与手动导入 | Keep 可读取带 GPS 的骑行，作为目标时下载 FIT 后到 Keep App 导入 |
 | 上传 | 捷安特、Outbase |
@@ -56,8 +56,32 @@ Docker 卷保存工作台账号、原始活动文件、任务和同步回执。�
 
 3D 海拔轨迹和战报 PNG 在浏览器内绘制。主动开启真实地图时，浏览器向地图服务请求当前区域的地图瓦片。 [OpenFreeMap](https://openfreemap.org/) · [Mapterhorn](https://mapterhorn.com/)
 
-## 来源与依赖
+## 致谢
 
-工作台流程和平台适配参考了 Anathleticbicyclist 的 Android 项目。`fit-coordinate.mjs` 的坐标换算参考并改编自其 `FitGcj02Fixer.kt`。 [原项目](https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform) · [参考源码](https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform/blob/38204ab682e5169bbb2af78974fc3c802fcbafe1/app/src/main/java/com/jichi/ob/util/FitGcj02Fixer.kt)
+感谢以下项目的维护者和贡献者。
 
-界面使用 Vue 3 和 Element Plus。地图使用 MapLibre GL JS，FIT 编解码使用 Garmin FIT JavaScript SDK。各依赖适用各自的许可。 [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) · [Garmin FIT JavaScript SDK](https://github.com/garmin/fit-javascript-sdk)
+### 功能与实现参考
+
+- [鸡翅幸哲迈进OB（Android）](https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform)：同步流程和部分平台的请求格式参考了这个项目。`fit-coordinate.mjs` 的坐标转换改编自其 [FitGcj02Fixer.kt](https://github.com/Anathleticbicyclist/sports-data-sync-multiplatform/blob/38204ab682e5169bbb2af78974fc3c802fcbafe1/app/src/main/java/com/jichi/ob/util/FitGcj02Fixer.kt)。
+- [DailySync](https://github.com/gooin/dailysync-rev) 和 [garmin-connect-cn](https://github.com/gooin/garmin-connect-cn)：用于对照佳明中国区活动列表、原始 FIT 下载和跨区同步。感谢国区客户端的上游 [garmin-connect](https://github.com/Pythe1337N/garmin-connect)。
+- [magene-fit-strava-fix](https://github.com/dwmer0308-a11y/magene-fit-strava-fix) 和 [Garth](https://github.com/matin/garth)：Android 项目分别鸣谢了它们的坐标转换算法和佳明登录研究。网页版未引入 Garth。
+
+### 程序依赖
+
+| 项目 | 在本项目中的用途 |
+| --- | --- |
+| [Vue](https://github.com/vuejs/core)、[Element Plus](https://github.com/element-plus/element-plus) | 工作台界面与组件 |
+| [Vite](https://github.com/vitejs/vite)、[Vite Vue 插件](https://github.com/vitejs/vite-plugin-vue) | 前端开发与构建 |
+| [Garmin FIT JavaScript SDK](https://github.com/garmin/fit-javascript-sdk) | 读取、生成和检查 FIT 文件 |
+| [xmldom](https://github.com/xmldom/xmldom) | 读取和生成 GPX 文件 |
+| [fflate](https://github.com/101arrowz/fflate) | 解压佳明活动归档和打包 FIT 文件 |
+| [bcrypt.js](https://github.com/dcodeIO/bcrypt.js) | 生成高驰登录请求所需的密码哈希 |
+| [Playwright](https://github.com/microsoft/playwright) | 浏览器授权辅助 |
+| [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) | 交互地图与地形渲染 |
+
+[完整 npm 依赖致谢](docs/依赖致谢.md) 按锁文件列出了直接和间接依赖。各依赖适用各自的许可。
+
+### 运行环境与地图数据
+
+- [Node.js](https://github.com/nodejs/node) 和 [npm CLI](https://github.com/npm/cli) 提供运行环境和依赖安装。[Docker Compose](https://github.com/docker/compose) 和 [Node.js 官方容器镜像](https://github.com/nodejs/docker-node) 用于自托管部署。
+- [OpenFreeMap](https://github.com/hyperknot/openfreemap) 提供底图瓦片，使用 [OpenMapTiles](https://github.com/openmaptiles/openmaptiles) 的图层规范，地图数据来自 [OpenStreetMap 及其贡献者](https://www.openstreetmap.org/copyright)。[Mapterhorn](https://github.com/mapterhorn/mapterhorn) 提供地形高程瓦片，[数据来源](https://mapterhorn.com/attribution/)由该项目列出。
