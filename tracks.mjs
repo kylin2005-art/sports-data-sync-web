@@ -1,6 +1,7 @@
 import { Decoder, Stream } from '@garmin/fitsdk';
 import { DOMParser, DOMImplementation, XMLSerializer } from '@xmldom/xmldom';
 import { WorkspaceError, isKnownOtherSport } from './sync-workspace.mjs';
+import { bestFiveMinutePower } from './ride-power.mjs';
 
 const GPX = 'http://www.topografix.com/GPX/1/1';
 const GPX_OLD = 'http://www.topografix.com/GPX/1/0';
@@ -487,6 +488,69 @@ export function readRideExplorationTrack(file) {
   if (segments.length > MAX_SEGMENTS) fail('活动轨迹分段过多。');
   const session = rideSession(messages);
   return { startTime: rideStartTime(session, messages, segments), segments };
+}
+
+function estimatedAscent(segments) {
+  let ascent = 0, usable = false;
+  for (const segment of segments) {
+    let anchor, peak, climbing;
+    for (const { elevation } of segment) {
+      if (!Number.isFinite(elevation)) {
+        if (climbing) ascent += peak - anchor;
+        anchor = undefined;
+        climbing = false;
+        continue;
+      }
+      if (anchor === undefined) { anchor = elevation; continue; }
+      usable = true;
+      if (!climbing) {
+        anchor = Math.min(anchor, elevation);
+        if (elevation - anchor >= 3) { climbing = true; peak = elevation; }
+      } else if (peak - elevation >= 3) {
+        ascent += peak - anchor;
+        anchor = elevation;
+        climbing = false;
+      } else {
+        peak = Math.max(peak, elevation);
+      }
+    }
+    if (climbing) ascent += peak - anchor;
+  }
+  return usable ? ascent : null;
+}
+
+export function readRideHighlightMetrics(file) {
+  if (isKnownOtherSport(file.type)) return null;
+  const { messages, segments } = readTrack(file, false);
+  if (segments.length > MAX_SEGMENTS) fail('活动轨迹分段过多。');
+  const session = rideSession(messages);
+  const time = Date.parse(rideStartTime(session, messages, segments) ?? (file.time !== file.created ? file.time : null));
+  if (!Number.isFinite(time)) return null;
+  const distance = nonnegative(session?.totalDistance);
+  let distanceM = distance;
+  if (!distanceM) {
+    distanceM = 0;
+    for (const points of segments) {
+      for (let i = 1; i < points.length; i++) distanceM += distanceBetween(points[i - 1], points[i]);
+    }
+  }
+  const ascent = nonnegative(session?.totalAscent);
+  const ascentM = ascent ?? estimatedAscent(segments);
+  let powerSegments;
+  if (messages) {
+    const changes = timerChanges(messages);
+    powerSegments = [(messages.recordMesgs ?? []).map(record => {
+      const time = record.timestamp?.getTime();
+      const timer = timerIndex(changes, time);
+      return { time, power: record.power, timer, paused: changes[timer]?.paused };
+    })];
+  } else {
+    powerSegments = segments.map(points => points.map(point => ({
+      time: point.time, power: gpxSensors(point.node).powerW,
+    })));
+  }
+  return { time, distanceM, ascentM, powerW: bestFiveMinutePower(powerSegments),
+    estimatedDistance: !distance && distanceM > 0, estimatedAscent: ascent === null && ascentM !== null };
 }
 
 export function readRideSummary(file) {

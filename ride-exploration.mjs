@@ -48,6 +48,12 @@ export async function buildRideExplorationIndex(store) {
   }
 }
 
+export async function rideExplorationCounts(store) {
+  await buildRideExplorationIndex(store);
+  return new Map(store.rideExplorationInArchiveOrder(INDEX_VERSION).map(({ id, payload }) =>
+    [id, JSON.parse(payload).cells?.length ?? 0]));
+}
+
 export async function rideExplorationMonth(store, month, timeZone = 'UTC') {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month < '1970-01') {
     throw new WorkspaceError(400, '请选择有效的活动月份。');

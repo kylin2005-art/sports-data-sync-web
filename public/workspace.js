@@ -43,6 +43,7 @@ const model = {
 };
 const trackLibrary = { page: null, start: 0, loading: false, retryStart: 0, sort: 'startTime', direction: -1 };
 let monthlyRide = null;
+let highlightsRequest = 0;
 const trackDate = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
 const trackColumns = [
   ['durationSeconds', rideDuration], ['distanceM', value => (value / 1000).toFixed(2)],
@@ -958,6 +959,53 @@ async function saveMonthlyRide(method) {
   }
 }
 
+function resetRideHighlights() {
+  highlightsRequest++;
+  byId('ride-highlights-load').disabled = false;
+  byId('ride-highlights-status').textContent = '';
+  byId('ride-highlights-cards').hidden = true;
+}
+
+async function showRideHighlights(event) {
+  event.preventDefault();
+  resetRideHighlights();
+  const request = highlightsRequest;
+  const year = byId('ride-highlights-year').value;
+  const load = byId('ride-highlights-load'), status = byId('ride-highlights-status'), cards = byId('ride-highlights-cards');
+  const timeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const params = new URLSearchParams({ year, tz: timeZone || 'UTC' });
+  load.disabled = true;
+  status.textContent = '正在汇总年度高光。首次读取旧档案可能需要一些时间…';
+  try {
+    const { count, records } = await api(`/api/ride-highlights?${params}`);
+    if (request !== highlightsRequest) return;
+    status.textContent = count ? `${year} 年 · ${count.toLocaleString('zh-CN')} 条有日期的骑行` : `${year} 年没有可统计的骑行。`;
+    if (!count) return;
+    const definitions = [
+      ['distance', '年度最长距离', value => `${(value / 1000).toFixed(2)} km`, '暂无可用距离'],
+      ['ascent', '单次最高爬升', value => `${Math.round(value).toLocaleString('zh-CN')} m`, '暂无可用爬升'],
+      ['exploration', '单次最多探索格子', value => `${value.toLocaleString('zh-CN')} 格`, '暂无可用定位轨迹'],
+      ['power', '最强 5 分钟功率', value => `${Math.round(value).toLocaleString('zh-CN')} W`, '暂无连续 5 分钟功率记录'],
+    ];
+    cards.replaceChildren(...definitions.map(([key, title, format, empty]) => {
+      const card = element('section', 'ride-metric');
+      const record = records[key];
+      card.append(element('h3', '', title));
+      if (record) {
+        card.append(element('p', 'highlight-value', `${record.estimated ? '≈ ' : ''}${format(record.value)}`),
+          element('p', 'muted', `${record.name} · ${trackDate.format(record.time)}`),
+          button('分析这趟骑行', () => openRide(record.id)));
+      } else card.append(element('p', 'muted', empty));
+      return card;
+    }));
+    cards.hidden = false;
+  } catch (error) {
+    if (request === highlightsRequest) status.textContent = error.message || '年度高光读取失败。';
+  } finally {
+    if (request === highlightsRequest) load.disabled = false;
+  }
+}
+
 function showRideMapLegend(legend, estimatedSpeed) {
   const list = byId('ride-map-legend');
   const items = legend.map(({ label, color }) => {
@@ -1483,6 +1531,9 @@ byId('exploration-fit-all').addEventListener('click', () => model.ride?.explorat
 byId('exploration-download').addEventListener('click', () => saveRideImage('downloadCanvas', 'exploration-card', '骑行探索卡.png'));
 byId('exploration-share').addEventListener('click', () => saveRideImage('shareCanvas', 'exploration-card', '骑行探索卡.png'));
 const monthToday = new Date();
+byId('ride-highlights-year').value = String(monthToday.getFullYear());
+byId('ride-highlights-year').addEventListener('input', resetRideHighlights);
+byId('ride-highlights-form').addEventListener('submit', showRideHighlights);
 byId('ride-month-input').value = `${monthToday.getFullYear()}-${String(monthToday.getMonth() + 1).padStart(2, '0')}`;
 byId('ride-month-input').addEventListener('input', clearMonthlyRide);
 byId('ride-month-load').addEventListener('click', loadMonthlyRide);

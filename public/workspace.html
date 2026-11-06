@@ -175,6 +175,17 @@
             </div>
           </div>
         </section>
+        <section class="panel space" aria-labelledby="ride-highlights-heading">
+          <p class="eyebrow">RIDE HIGHLIGHTS</p>
+          <h2 id="ride-highlights-heading">年度骑行高光</h2>
+          <p class="muted">看看这一年骑得最远、爬升最多、覆盖格子最多和 5 分钟功率最高的骑行。</p>
+          <form id="ride-highlights-form" class="action-row">
+            <label class="field">活动年份<input id="ride-highlights-year" type="number" min="1970" max="9999" step="1" required></label>
+            <button type="submit" id="ride-highlights-load" class="button button-primary">查看年度高光</button>
+          </form>
+          <p id="ride-highlights-status" class="muted" role="status"></p>
+          <div id="ride-highlights-cards" class="ride-metrics exploration-metrics" hidden></div>
+        </section>
         <section class="panel space" aria-labelledby="ride-month-heading">
           <p class="eyebrow">RIDE RECAP</p>
           <h2 id="ride-month-heading">月度骑行明信片</h2>

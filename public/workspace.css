@@ -480,6 +480,11 @@ body:has(.workspace) #credential-dialog {
 .workspace .ride-month-highlight { margin-top: 20px; }
 .workspace .ride-month-highlight p { margin: 6px 0 10px; overflow-wrap: anywhere; }
 .workspace .ride-metrics.exploration-metrics { grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); }
+.workspace #ride-highlights-cards { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); }
+.workspace #ride-highlights-cards[hidden] { display: none; }
+.workspace #ride-highlights-cards .ride-metric { display: grid; align-content: start; gap: 5px; overflow-wrap: anywhere; }
+.workspace #ride-highlights-cards .button { justify-self: start; margin-top: 3px; }
+.workspace #ride-highlights-cards .highlight-value { font-size: 24px; font-weight: 700; color: var(--panel-text); }
 .workspace #ride-exploration-results > .muted { margin: 10px 0; }
 
 .workspace .ride-analysis > .muted,

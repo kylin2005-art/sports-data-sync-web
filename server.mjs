@@ -255,6 +255,11 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
       }
       if (request.method === 'GET' && path === '/api/state') return json(response, 200, verified);
       if (workspace && request.method === 'GET') {
+        if (path === '/api/ride-highlights') {
+          const { annualRideHighlights } = await import('./ride-highlights.mjs');
+          return json(response, 200, await annualRideHighlights(workspace.store,
+            url.searchParams.get('year'), url.searchParams.get('tz') ?? 'UTC'));
+        }
         if (path === '/api/ride-exploration/month') {
           const { rideExplorationMonth } = await import('./ride-exploration.mjs');
           return json(response, 200, await rideExplorationMonth(workspace.store,

@@ -39,6 +39,9 @@ export class SyncStore {
       CREATE TABLE IF NOT EXISTS ride_exploration (
         file_id TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (file_id, version)
       );
+      CREATE TABLE IF NOT EXISTS ride_highlights (
+        file_id TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (file_id, version)
+      );
       CREATE TABLE IF NOT EXISTS last_run (id INTEGER PRIMARY KEY, payload TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS workout_receipts (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
     `);
@@ -163,6 +166,29 @@ export class SyncStore {
 
   fileNameForExploration(id) {
     return this.db.prepare("SELECT json_extract(payload, '$.name') AS name FROM files WHERE id = ?").get(id)?.name;
+  }
+
+  unindexedRideHighlightFiles(version) {
+    return this.db.prepare(`SELECT files.id FROM files LEFT JOIN ride_highlights
+      ON ride_highlights.file_id = files.id AND ride_highlights.version = ?
+      WHERE ride_highlights.file_id IS NULL ORDER BY files.rowid`).all(version).map(row => row.id);
+  }
+
+  saveRideHighlights(version, entries) {
+    const write = this.db.prepare('INSERT OR IGNORE INTO ride_highlights (file_id, version, payload) VALUES (?, ?, ?)');
+    this.db.exec('BEGIN');
+    try {
+      for (const [id, entry] of entries) write.run(id, version, JSON.stringify(entry));
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  rideHighlightRows(version) {
+    return this.db.prepare(`SELECT files.id, json_extract(files.payload, '$.name') AS name, ride_highlights.payload
+      FROM ride_highlights JOIN files ON files.id = ride_highlights.file_id WHERE ride_highlights.version = ?`).all(version);
   }
 
   trackLibraryPage(start, limit) {
