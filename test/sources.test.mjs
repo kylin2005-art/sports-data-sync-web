@@ -56,6 +56,29 @@ test('Xingzhe uses session Cookie and keeps metres and fractional seconds', asyn
   assert.equal(result.activities[0].time, new Date(1793760000000).toISOString());
 });
 
+test('Xingzhe retries the rejected history page once and decodes cycling and non-cycling sports', async () => {
+  const { sources, calls } = fixture([
+    { status: 400 },
+    { json: { code: 0, data: { data: [3, '8', 11, 13, 2, 4, 12].map((sport, i) => ({ id: i + 1, sport })) } } },
+  ]);
+  const result = await sources.activities('xingzhe', { sessionId: 'synthetic' }, 120);
+  assert.deepEqual(calls.map(call => new URL(call.url).searchParams.get('offset')), ['120', '120']);
+  assert.deepEqual(result.activities.map(item => item.type),
+    ['cycling', 'indoor_cycling', 'indoor_cycling', 'e_bike_fitness', 'running', 'hiking', '12']);
+  assert.equal(result.nextStart, null);
+});
+
+test('Xingzhe does not hide persistent pagination failures or retry an expired session', async () => {
+  const failed = fixture([{ status: 400 }, { status: 400 }]);
+  await assert.rejects(failed.sources.activities('xingzhe', { sessionId: 'synthetic' }, 120), error =>
+    error.status === 400 && /120/.test(error.message));
+  assert.equal(failed.calls.length, 2);
+
+  const expired = fixture([{ status: 401 }]);
+  await assert.rejects(expired.sources.activities('xingzhe', { sessionId: 'synthetic' }, 120), { status: 401 });
+  assert.equal(expired.calls.length, 1);
+});
+
 test('Magene sends raw token and POST pagination then converts documented kilometres', async () => {
   const { sources, calls } = fixture([{ json: { code: 200, data: { list: [{ id: '123', name: 'Ride', distance_km: 12.5, time_seconds: 3600, start_riding_time: 1793760000 }], pagination: { has_more: false } } } }]);
   const result = await sources.activities('magene', { token: 'synthetic-magene' }, 20);

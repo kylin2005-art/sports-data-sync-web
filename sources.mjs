@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { validFit } from './garmin-browser.mjs';
 import { blackbirdTrackGpx } from './platform-sources.mjs';
 
@@ -25,6 +26,14 @@ const NAMES = Object.fromEntries(SOURCE_DEFINITIONS.map(({ id, name }) => [id, n
 const IGP = 'https://prod.zh.igpsport.com/service/web-gateway/web-analyze/activity';
 const IGP_INT = 'https://prod.en.igpsport.com/service/web-gateway/web-analyze/activity';
 const XZ = 'https://www.imxingzhe.com/api/v1';
+// https://developer.imxingzhe.com/docs/device/tracking_data_service/
+const XZ_SPORTS = new Map([
+  ['1', 'walking'], ['2', 'running'], ['3', 'cycling'], ['4', 'hiking'],
+  ['5', 'swimming'], ['6', 'skiing'], ['8', 'indoor_cycling'],
+  ['11', 'indoor_cycling'], ['13', 'e_bike_fitness'],
+]);
+const XZ_PAGE_INTERVAL_MS = 400;
+const XZ_PAGE_RETRY_MS = 1200;
 const MG = 'https://otm.onelap.cn';
 const BB = 'https://www.blackbirdsport.com';
 const BR = 'https://active.brytonsport.com';
@@ -166,6 +175,7 @@ function isGpx(data) {
 }
 
 export function createSources({ fetchImpl = globalThis.fetch } = {}) {
+  let nextXingzhePageAt = 0;
   async function request(platform, url, options = {}) {
     let response;
     try {
@@ -209,6 +219,27 @@ export function createSources({ fetchImpl = globalThis.fetch } = {}) {
     throw failure;
   }
 
+  async function xingzhePage(headers, offset) {
+    const url = `${XZ}/pgworkout/?offset=${offset}&limit=${PAGE_SIZE}`;
+    const read = async (cooldown = 0) => {
+      const now = performance.now();
+      const start = Math.max(nextXingzhePageAt, now + cooldown);
+      nextXingzhePageAt = start + XZ_PAGE_INTERVAL_MS;
+      if (start > now) await delay(start - now);
+      return json('xingzhe', url, { headers });
+    };
+    try { return await read(); }
+    catch (error) {
+      // Rapid requests can return HTTP 400 even though the same page works after a pause.
+      if (offset === 0 || error.status !== 400) throw error;
+    }
+    try { return await read(XZ_PAGE_RETRY_MS); }
+    catch (error) {
+      if (error.status !== 400) throw error;
+      throw new SourceError('xingzhe', `读取活动分页失败 HTTP 400（起始位置 ${offset}），请稍后重试`, 400);
+    }
+  }
+
   async function readPage(platform, headers, offset, credential) {
     let result, rows, more;
     if (platform === 'igpsport' || platform === 'igpsport_int') {
@@ -219,7 +250,7 @@ export function createSources({ fetchImpl = globalThis.fetch } = {}) {
       more = Array.isArray(rows) && rows.length === PAGE_SIZE &&
         (!international || !Number.isSafeInteger(data.totalRows) || offset + rows.length < data.totalRows);
     } else if (platform === 'xingzhe') {
-      result = await json(platform, `${XZ}/pgworkout/?offset=${offset}&limit=20`, { headers });
+      result = await xingzhePage(headers, offset);
       rows = result.data?.data;
       more = Array.isArray(rows) && rows.length === PAGE_SIZE;
     } else if (platform === 'bryton') {
@@ -279,7 +310,8 @@ export function createSources({ fetchImpl = globalThis.fetch } = {}) {
       time: time(row.startTime), distance: numeric(row.rideDistance), duration: numeric(row.recordTime || row.totalMovingTime)
     };
     if (platform === 'xingzhe') return {
-      id: idValue(row.id, platform), name: String(row.title ?? '运动'), type: String(row.type ?? row.sport ?? '运动'),
+      id: idValue(row.id, platform), name: String(row.title ?? '运动'),
+      type: XZ_SPORTS.get(String(row.sport)) ?? String(row.type ?? row.sport ?? '运动'),
       time: time(row.start_time), distance: numeric(row.distance), duration: numeric(row.duration)
     };
     if (platform === 'blackbird') {
