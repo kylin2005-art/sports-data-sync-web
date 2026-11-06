@@ -467,6 +467,16 @@ body:has(.workspace) #credential-dialog {
 .workspace .month-heat-low { background: #5996e3; }
 .workspace .month-heat-mid { background: #2868be; }
 .workspace .month-heat-high { background: #16396d; }
+.workspace #ride-compare-status { font-weight: 700; margin-top: 8px; }
+.workspace .ride-compare-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+.workspace .ride-compare-table :is(td, th) { padding: 8px; border-bottom: 1px solid var(--panel-line); text-align: start; overflow-wrap: anywhere; }
+.workspace .ride-compare-table th:first-child { width: 25%; }
+.workspace .ride-compare-table th span { display: block; font-weight: 400; color: var(--panel-muted); }
+.workspace .ride-compare-baseline { color: #8050b5; }
+.workspace .ride-compare-current { color: #1768d6; }
+.workspace .ride-compare-plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(310px, 100%), 1fr)); gap: 14px; margin-top: 16px; }
+.workspace .ride-compare-plots canvas { display: block; width: 100%; height: auto; border: 1px solid var(--panel-line); border-radius: 9px; background: #f5f8fd; }
+.workspace .ride-compare-plots canvas[hidden] { display: none; }
 .workspace .ride-month-highlight { margin-top: 20px; }
 .workspace .ride-month-highlight p { margin: 6px 0 10px; overflow-wrap: anywhere; }
 .workspace .ride-metrics.exploration-metrics { grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); }

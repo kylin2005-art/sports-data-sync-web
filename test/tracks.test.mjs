@@ -129,7 +129,7 @@ test('ride preview uses FIT session units and supports indoor files without GPS'
   const ws = workspace({ a: { data: Buffer.from(encode.close()), fileName: 'indoor.fit' } });
   const result = processRide({ id: 'a' }, ws);
   assert.deepEqual(result, {
-    format: 'fit', startTime: '2026-11-04T00:00:00.000Z', metrics: {
+    name: 'indoor.fit', format: 'fit', startTime: '2026-11-04T00:00:00.000Z', metrics: {
       distanceM: 15000, durationSeconds: 1800, durationKind: 'timer', ascentM: 245,
       avgSpeedMps: 8.4, avgHeartRateBpm: 145, avgPowerW: 200, avgCadenceRpm: 85,
     }, estimated: [], route: [], trimmedRoute: [], elevation: [],

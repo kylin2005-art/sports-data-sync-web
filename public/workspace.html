@@ -143,10 +143,38 @@
             <span id="track-selection" class="muted" aria-live="polite">已选 0 条</span>
             <button type="button" id="track-clear" class="button button-quiet" hidden>清空选择</button>
             <button type="button" id="analyze-ride" class="button button-primary" disabled>分析并生成战报</button>
+            <button type="button" id="compare-ride" class="button button-secondary" disabled>对比两趟骑行</button>
             <button type="button" id="draw-track" class="button button-secondary" disabled>预览轨迹</button>
             <button type="button" id="merge-track" class="button button-secondary" disabled>合并为 GPX</button>
           </div>
         </div>
+        <section id="ride-compare" class="panel space" aria-labelledby="ride-compare-heading" hidden>
+          <p class="eyebrow">RIDE COMPARISON</p>
+          <h2 id="ride-compare-heading" tabindex="-1">同路线骑行对比</h2>
+          <p id="ride-compare-status" role="status"></p>
+          <p id="ride-compare-time" class="muted"></p>
+          <table class="ride-compare-table" aria-label="两趟骑行指标">
+            <thead><tr>
+              <th scope="col">指标</th>
+              <th scope="col" class="ride-compare-baseline">基准骑行<span id="ride-compare-baseline"></span></th>
+              <th scope="col" class="ride-compare-current">对照骑行<span id="ride-compare-current"></span></th>
+            </tr></thead>
+            <tbody id="ride-compare-metrics"></tbody>
+          </table>
+          <p id="ride-compare-estimated" class="muted" hidden>≈ 表示估算值。</p>
+          <div class="ride-compare-plots">
+            <div>
+              <h3>路线叠加</h3>
+              <p id="ride-compare-route-note" class="muted"></p>
+              <canvas id="ride-compare-route" width="860" height="360" aria-label="两趟骑行的路线叠加示意图"></canvas>
+            </div>
+            <div>
+              <h3>海拔对照</h3>
+              <p id="ride-compare-elevation-note" class="muted"></p>
+              <canvas id="ride-compare-elevation" width="860" height="360" aria-label="两趟骑行按各自累计距离绘制的海拔曲线"></canvas>
+            </div>
+          </div>
+        </section>
         <section class="panel space" aria-labelledby="ride-month-heading">
           <p class="eyebrow">RIDE RECAP</p>
           <h2 id="ride-month-heading">月度骑行明信片</h2>

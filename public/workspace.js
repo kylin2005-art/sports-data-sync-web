@@ -211,6 +211,7 @@ function renderControls() {
   byId('stop').hidden = !running();
   byId('stop').disabled = model.run?.stopRequested === true;
   byId('analyze-ride').disabled = model.working || model.tracks.size !== 1;
+  byId('compare-ride').disabled = model.working || model.tracks.size !== 2;
   byId('draw-track').disabled = model.working || !model.tracks.size;
   byId('merge-track').disabled = model.working || model.tracks.size < 2;
   byId('track-selection').textContent = `已选 ${model.tracks.size} 条`;
@@ -535,6 +536,7 @@ function renderTrackRows() {
       else if (model.tracks.size < 10) model.tracks.add(file.id);
       else { input.checked = false; notice('一次最多处理 10 个文件。'); }
       if (model.ride && (model.tracks.size !== 1 || !model.tracks.has(model.ride.id))) clearRide();
+      byId('ride-compare').hidden = true;
       renderControls();
     });
     const selection = element('td');
@@ -1041,6 +1043,72 @@ function rideDuration(seconds) {
   return parts.map(value => String(value).padStart(2, '0')).join(':');
 }
 
+function renderRideComparison({ baseline, ride, match, secondsSaved }, drawRoutes, drawElevation) {
+  const descriptions = {
+    same: '两趟路线接近，行进方向一致。',
+    reverse: '两趟路线接近，行进方向相反。',
+    ambiguous: '路线接近，往返方向难以区分。',
+    different: '两趟路线的走向或起终点差异较大。',
+    unavailable: '定位点不足、轨迹断点较多或路线过短，无法判断是否同路线。',
+  };
+  byId('ride-compare-status').textContent = descriptions[match];
+  const seconds = secondsSaved == null ? null : Math.round(secondsSaved);
+  const approximate = [baseline, ride].some(activity => activity.estimated.includes('durationSeconds')) ? '（估算）' : '';
+  byId('ride-compare-time').textContent = seconds == null
+    ? (match === 'same' ? '两趟的时长口径不同或缺少时长，分别列在下表。' : '下表显示各自的数据。')
+    : seconds === 0 ? `两趟用时相同${approximate}。` : `对照骑行比基准${seconds > 0 ? '快' : '慢'} ${rideDuration(Math.abs(seconds))}${approximate}。`;
+  for (const [id, activity] of [['ride-compare-baseline', baseline], ['ride-compare-current', ride]]) {
+    byId(id).textContent = [activity.name || '活动', activity.startTime && formatTime(activity.startTime)].filter(Boolean).join(' · ');
+  }
+  const metrics = [
+    ['durationSeconds', '用时', rideDuration],
+    ['distanceM', '距离', value => `${(value / 1000).toFixed(2)} km`],
+    ['ascentM', '累计爬升', value => `${Math.round(value)} m`],
+    ['avgSpeedMps', '平均速度', value => `${(value * 3.6).toFixed(1)} km/h`],
+    ['avgHeartRateBpm', '平均心率', value => `${Math.round(value)} bpm`],
+    ['avgPowerW', '平均功率', value => `${Math.round(value)} W`],
+  ];
+  const rows = metrics.map(([key, label, format]) => {
+    const row = element('tr');
+    const heading = element('th', '', label);
+    heading.scope = 'row';
+    row.append(heading, ...[baseline, ride].map(activity => {
+      const value = activity.metrics[key];
+      if (!Number.isFinite(value)) return element('td', '', '—');
+      const duration = key === 'durationSeconds' ? (activity.metrics.durationKind === 'timer' ? ' · 运动计时' : ' · 经过时长') : '';
+      return element('td', '', `${activity.estimated.includes(key) ? '≈ ' : ''}${format(value)}${duration}`);
+    }));
+    return row;
+  });
+  byId('ride-compare-metrics').replaceChildren(...rows);
+  byId('ride-compare-estimated').hidden = !baseline.estimated.length && !ride.estimated.length;
+  const route = byId('ride-compare-route'), elevation = byId('ride-compare-elevation');
+  route.hidden = !drawRoutes(route, baseline, ride);
+  elevation.hidden = !drawElevation(elevation, baseline, ride);
+  const routeCount = [baseline, ride].filter(activity => activity.mapSegments.length).length;
+  byId('ride-compare-route-note').textContent = route.hidden ? '没有可绘制的定位轨迹。' :
+    routeCount === 1 ? '仅一趟有定位轨迹。紫色虚线为基准，蓝色实线为对照。' : '紫色虚线为基准，蓝色实线为对照。';
+  const elevationCount = [baseline, ride].filter(activity => activity.elevation.length).length;
+  byId('ride-compare-elevation-note').textContent = elevation.hidden ? '没有可绘制的海拔数据。' :
+    elevationCount === 1 ? '仅一趟记录了可绘制的海拔。紫色为基准，蓝色为对照。' : '紫色为基准，蓝色为对照，横轴为各自累计距离。';
+  byId('ride-compare').hidden = false;
+  byId('ride-compare-heading').focus();
+}
+
+function openRideComparison() {
+  const ids = [...model.tracks];
+  if (ids.length !== 2 || model.working) return;
+  byId('ride-compare').hidden = true;
+  clearRide();
+  return perform(async () => {
+    const [{ compareRides, drawComparisonRoutes, drawComparisonElevation }, ...rides] = await Promise.all([
+      import('/ride-compare.js'), ...ids.map(id => api(`/api/ride/${encodeURIComponent(id)}`)),
+    ]);
+    if (location.hash !== '#tracks' || model.tracks.size !== 2 || !ids.every(id => model.tracks.has(id))) return;
+    renderRideComparison(compareRides(...rides), drawComparisonRoutes, drawComparisonElevation);
+  });
+}
+
 function showRideMetrics(ride) {
   const { metrics, estimated, startTime, format } = ride;
   const rows = [
@@ -1135,6 +1203,7 @@ function saveRideImage(method, canvasId, filename, report = notice) {
 
 function openRide(id) {
   if (model.working) return;
+  byId('ride-compare').hidden = true;
   if (model.tracks.size !== 1 || !model.tracks.has(id)) {
     model.tracks = new Set([id]);
     renderTrackRows();
@@ -1334,6 +1403,7 @@ byId('track-retry').addEventListener('click', () => loadTrackLibrary(trackLibrar
 byId('track-clear').addEventListener('click', () => {
   model.tracks.clear();
   clearRide();
+  byId('ride-compare').hidden = true;
   renderTrackRows();
   renderControls();
 });
@@ -1376,6 +1446,7 @@ byId('track-png').addEventListener('click', () => {
     .catch(() => notice('无法生成 PNG 图片，请重试。', 'error'));
 });
 byId('analyze-ride').addEventListener('click', () => openRide(model.tracks.values().next().value));
+byId('compare-ride').addEventListener('click', openRideComparison);
 for (const control of ['ride-title', 'ride-theme', 'ride-ratio', 'ride-route', 'ride-date']) {
   byId(control).addEventListener(control === 'ride-title' ? 'input' : 'change', refreshRideCard);
 }

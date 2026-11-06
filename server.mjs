@@ -21,6 +21,7 @@ const workspaceAssets = new Map([
   ['/ride-terrain.js', ['ride-terrain.js', 'text/javascript; charset=utf-8']],
   ['/ride-image.js', ['ride-image.js', 'text/javascript; charset=utf-8']],
   ['/ride-exploration.js', ['ride-exploration.js', 'text/javascript; charset=utf-8']],
+  ['/ride-compare.js', ['ride-compare.js', 'text/javascript; charset=utf-8']],
   ['/workspace-icon.svg', ['workspace-icon.svg', 'image/svg+xml']],
   ['/ui/workspace-ui.js', ['ui/workspace-ui.js', 'text/javascript; charset=utf-8']],
   ['/ui/workspace-ui.css', ['ui/workspace-ui.css', 'text/css; charset=utf-8']],

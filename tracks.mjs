@@ -527,7 +527,8 @@ export function processRide({ id } = {}, workspace) {
   if (!startTime && !route.length && Object.values(metrics).every(value => value === null)) {
     fail('所选文件没有可用的活动指标或轨迹。');
   }
-  return { format, startTime, metrics, estimated, route, trimmedRoute, elevation, ...rideMap(file, segments, messages) };
+  return { name: file.name || file.fileName, format, startTime, metrics, estimated, route, trimmedRoute, elevation,
+    ...rideMap(file, segments, messages) };
 }
 
 export async function processTracks({ ids, merge = false } = {}, workspace) {
