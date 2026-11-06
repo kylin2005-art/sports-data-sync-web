@@ -36,6 +36,9 @@ export class SyncStore {
       CREATE INDEX IF NOT EXISTS receipt_file ON receipts (json_extract(payload, '$.fileId'), json_extract(payload, '$.target'));
       CREATE INDEX IF NOT EXISTS receipt_target_activity ON receipts (json_extract(payload, '$.target'), json_extract(payload, '$.activityId'));
       CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, created TEXT NOT NULL, payload TEXT NOT NULL, data BLOB NOT NULL);
+      CREATE TABLE IF NOT EXISTS ride_exploration (
+        file_id TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (file_id, version)
+      );
       CREATE TABLE IF NOT EXISTS last_run (id INTEGER PRIMARY KEY, payload TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS workout_receipts (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
     `);
@@ -137,8 +140,25 @@ export class SyncStore {
       .all(limit, start).map(row => JSON.parse(row.payload));
   }
 
-  fileIdsInArchiveOrder() {
-    return this.db.prepare('SELECT id FROM files ORDER BY rowid').all().map(row => row.id);
+  unindexedRideFiles(version) {
+    return this.db.prepare(`SELECT files.id FROM files LEFT JOIN ride_exploration
+      ON ride_exploration.file_id = files.id AND ride_exploration.version = ?
+      WHERE ride_exploration.file_id IS NULL ORDER BY files.rowid`).all(version).map(row => row.id);
+  }
+
+  rideExploration(id, version) {
+    const row = this.db.prepare('SELECT payload FROM ride_exploration WHERE file_id = ? AND version = ?').get(id, version);
+    return row ? JSON.parse(row.payload) : null;
+  }
+
+  saveRideExploration(id, version, entry) {
+    this.db.prepare('INSERT OR IGNORE INTO ride_exploration (file_id, version, payload) VALUES (?, ?, ?)')
+      .run(id, version, JSON.stringify(entry));
+  }
+
+  rideExplorationInArchiveOrder(version) {
+    return this.db.prepare(`SELECT files.id, ride_exploration.payload FROM files JOIN ride_exploration
+      ON ride_exploration.file_id = files.id AND ride_exploration.version = ? ORDER BY files.rowid`).all(version);
   }
 
   trackLibraryPage(start, limit) {

@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { Encoder, Profile } from '@garmin/fitsdk';
 import { createMultiUserServer } from '../multi-user-server.mjs';
 import { createWorkspaceHandler } from '../server.mjs';
 import { SyncStore } from '../sync-store.mjs';
+import { buildRideExplorationIndex, createRideExploration } from '../ride-exploration.mjs';
 
 function gpx(lons, day, fileName = 'ride.gpx') {
   const points = lons.map((lon, i) => `<trkpt lat="1" lon="${lon}">${day ?
@@ -78,4 +82,45 @@ test('exploration compares ride chronology across FIT and GPX, using every archi
   assert.equal(recomputed.previousCells.length, 3);
   assert.deepEqual(recomputed.newCells, []);
   assert.equal((await (await fetchRide('bob', bobId)).json()).previousCells.length, 0);
+});
+
+test('the exploration index survives reopening a legacy archive and only reads new files', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ride-index-'));
+  const dbPath = join(dir, 'sync.sqlite');
+  let store = new SyncStore(dbPath);
+  try {
+    const prior = fit([0.002, 0.006], '02', 'cycling');
+    const priorId = store.archive(prior);
+    const selectedId = store.archive(gpx([0.006, 0.010], '03'));
+    const badId = store.archive({ fileName: 'broken.fit', data: Buffer.from('invalid FIT') });
+    store.db.exec('DROP TABLE ride_exploration');
+    store.close();
+
+    store = new SyncStore(dbPath);
+    await buildRideExplorationIndex(store);
+    const expected = await createRideExploration(store)(selectedId);
+    assert.equal(expected.newCells.length, 1);
+    store.close();
+
+    store = new SyncStore(dbPath);
+    const reads = [];
+    const file = store.file.bind(store);
+    store.file = id => { reads.push(id); return file(id); };
+    const explore = createRideExploration(store);
+    assert.deepEqual(await explore(selectedId), expected);
+    await assert.rejects(explore(badId), { status: 422 });
+    assert.equal(store.archive(prior), priorId);
+    assert.deepEqual(await explore(selectedId), expected);
+    assert.deepEqual(reads, []);
+
+    const gpxId = store.archive(gpx([0.010, 0.014], '01'));
+    const fitId = store.archive(fit([0.018, 0.022], '04', 'cycling'));
+    const [updated, concurrent] = await Promise.all([explore(selectedId), explore(selectedId)]);
+    assert.deepEqual(updated, concurrent);
+    assert.deepEqual(updated.newCells, []);
+    assert.deepEqual(reads, [gpxId, fitId]);
+  } finally {
+    store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 });
