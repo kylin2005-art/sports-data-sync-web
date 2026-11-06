@@ -1,0 +1,32 @@
+# 升级记录
+
+日期以北京时间为准。首次整理从仓库可核实的 0.2.2 版本开始。升级前请按手册备份数据卷和密钥。 [部署与升级说明](docs/使用说明.md#排查更新和备份)
+
+## 2026-11-06 · 登录检查与定时任务
+
+- 登录 Docker 工作台后自动检查已保存的平台连接。明确失效的连接暂停用于同步。限流、超时等情况显示「暂无法核验」。仅支持上传的平台保留原来的使用时校验。
+- 定时任务只能添加已连接的平台。已经保存的目标掉线后仍可保留或移除。无需重建旧任务，原数据卷可继续使用。
+- 补写项目情况说明和历史升级记录。后续变更同时维护这两份文档。
+- 源码通过 216 项自动测试。浏览器验证了登录触发一次检查、页面刷新不重复检查，以及旧任务可移除已失效的目标。
+
+## 2026-11-06 · 同步操作与故障提示
+
+- 定时任务可手动同步当前可用目标，保留原有定时设置。首页隐藏未连接的平台，并清除已经断开的目标勾选。 [4ebbe0c](https://github.com/kylin2005-art/sports-data-sync-web/commit/4ebbe0c)
+- 记录中心可用已保存的佳明活动 ID 回查原目标账号，查到一致记录后才更新回执。 [3a96723](https://github.com/kylin2005-art/sports-data-sync-web/commit/3a96723)
+- 运行日志增加成功、错误和待核对的颜色及文字标记。任务摘要标出最近失败的环节、受影响的平台和处理入口。 [b6e325d](https://github.com/kylin2005-art/sports-data-sync-web/commit/b6e325d) · [537676c](https://github.com/kylin2005-art/sports-data-sync-web/commit/537676c)
+- Windows 版修复验证按钮提前清除佳明登录会话的问题。佳明中国完成登录后可在同一窗口再次验证。 [58e98d6](https://github.com/kylin2005-art/sports-data-sync-web/commit/58e98d6)
+- 使用说明补全 Docker 部署、平台授权和骑行分析操作。平台名称统一为 CyCity，并增加上游项目与依赖致谢。 [5c0b01b](https://github.com/kylin2005-art/sports-data-sync-web/commit/5c0b01b)
+- Unraid 内网版先后部署了 `3a96723` 和 `4ebbe0c`。容器健康检查通过，升级前后核对了工作台账号、任务、回执和文件数量。
+
+## 2026-11-06 · 0.3.0
+
+- 发布 Docker Compose 自托管版。支持个人和邀请制工作区，账号、任务、文件、回执和加密凭据可持久保存。提供个人内网 HTTPS 和佳明授权流程。
+- 增加首次全量和后续增量任务、训练课表、更多平台接入，以及 Keep 手动导入指引。
+- 增加轨迹表格、真实地图、速度和功率着色、可旋转的 3D 海拔轨迹和 PNG 骑行战报。
+- Docker 部署使用独立的数据卷和凭据密钥。Windows 本机数据保留在原目录，如需换到 Docker，可重新连接账号并导入活动原件。 [bceeb1f](https://github.com/kylin2005-art/sports-data-sync-web/commit/bceeb1f)
+
+## 2026-11-04 · 0.2.2
+
+- 发布 Windows 本机网页版，包含同步、平台账号、定时任务、记录中心和轨迹工具。
+- 支持佳明中国和国际分别登录、原始 FIT 下载、按活动 ID 确认导入，以及重启后的会话恢复和重复发送保护。
+- 任务、回执和文件使用本机 SQLite，平台会话由当前 Windows 用户的 DPAPI 加密保存。 [feb1d6b](https://github.com/kylin2005-art/sports-data-sync-web/commit/feb1d6b)

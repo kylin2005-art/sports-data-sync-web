@@ -6,7 +6,8 @@ const statusNames = {
   sending: '等待确认', accepted: '平台已接收', unconfirmed: '待核对', confirmed: '已确认',
   duplicate: '平台判定重复', guided: '待手动导入', failed: '失败', released: '允许重试',
 };
-const connectionNames = { ready: '可用', saved: '已保存', verified: '已验证', configured: '已配置', disconnected: '待连接' };
+const connectionNames = { ready: '可用', saved: '已保存', verified: '已验证', configured: '已配置', disconnected: '待连接', expired: '需重新连接' };
+const checkNames = { valid: '登录有效', unknown: '暂无法核验', unsupported: '使用时校验' };
 const platformGuides = {
   igpsport: { note: '使用 iGPSPORT 中国区账号。已有中国区登录 Token 时，也可手动配置。' },
   igpsport_int: { note: '使用 iGPSPORT 国际区账号。若官网自动跳到中国区，先确认留在国际站，再检查会话。' },
@@ -75,7 +76,7 @@ function link(text, href, kind = 'secondary') {
 function fileLink(id, text = '下载') { return link(text, `/api/files/${id}`); }
 const platform = id => model.platforms.find(item => item.id === id);
 const label = id => platform(id)?.name || id;
-const connected = id => Boolean(platform(id) && platform(id).state !== 'disconnected');
+const connected = id => Boolean(platform(id) && !['disconnected', 'expired'].includes(platform(id).state));
 const targetReady = id => Boolean(platform(id)?.guided || connected(id));
 const garminAvailable = () => model.features.garminDi === true || model.features.garminAuthorization !== false;
 const usablePlatform = item => item.auth !== 'garmin' || garminAvailable();
@@ -118,7 +119,7 @@ async function api(path, body) {
   let result;
   try { result = await response.json(); }
   catch { throw new Error('工作台服务没有返回有效结果。'); }
-  if (!response.ok) throw new Error(result.error || `请求未完成（HTTP ${response.status}）。`);
+  if (!response.ok) throw Object.assign(new Error(result.error || `请求未完成（HTTP ${response.status}）。`), { status: response.status });
   return result;
 }
 
@@ -162,6 +163,7 @@ function renderSelect(select, selected) {
 function renderChoices(container, source, selected, connectedOnly) {
   const targets = model.platforms.filter(item => item.target && item.id !== source && usablePlatform(item) &&
     (!connectedOnly || connected(item.id)));
+  const savedTargets = connectedOnly ? [] : model.jobs.find(job => job.id === model.jobId)?.targets || [];
   if (connectedOnly) {
     const available = new Set(targets.map(item => item.id));
     for (const id of selected) if (!available.has(id)) selected.delete(id);
@@ -171,15 +173,17 @@ function renderChoices(container, source, selected, connectedOnly) {
     const input = element('input');
     input.type = 'checkbox';
     input.value = item.id;
-    input.checked = selected.has(item.id);
+    const offline = !connected(item.id);
+    input.checked = selected.has(item.id) && (!offline || savedTargets.includes(item.id));
+    input.disabled = offline && !input.checked;
     input.addEventListener('change', () => {
       if (container.id === 'targets') {
         if (input.checked) model.targets.add(item.id);
         else model.targets.delete(item.id);
         renderControls();
-      }
+      } else if (offline) input.disabled = !input.checked;
     });
-    const text = item.guided ? `${item.name} · 手动导入` : item.name;
+    const text = offline ? `${item.name} · ${connectionNames[item.state]}` : item.guided ? `${item.name} · 手动导入` : item.name;
     choice.append(input, document.createTextNode(text));
     return choice;
   }));
@@ -357,7 +361,9 @@ function renderAccounts() {
     const card = element('article', 'panel platform-card');
     const head = element('div', 'panel-top');
     const isConnected = connected(item.id);
-    head.append(element('h2', '', item.name), element('span', `session-status${isConnected ? ' ready' : ''}`, connectionNames[item.state]));
+    const check = checkNames[item.check];
+    head.append(element('h2', '', item.name), element('span', `session-status${isConnected ? ' ready' : ''}`,
+      check ? `${connectionNames[item.state]} · ${check}` : connectionNames[item.state]));
     const actions = element('div', 'action-row');
     const useLocalHelper = localBrowser && item.browserImport;
     const canOpenBrowser = useLocalHelper || (browserLogin && item.browserLogin);
@@ -391,7 +397,7 @@ function renderAccounts() {
       actions.append(button(isConnected ? '更换凭据' : '配置凭据', () => credentialDialog(item),
         canOpenBrowser || canSignIn ? 'quiet' : 'secondary'));
     }
-    if (isConnected) actions.append(button('断开', () => perform(async () => {
+    if (isConnected || item.state === 'expired') actions.append(button('断开', () => perform(async () => {
       await api('/api/disconnect', { platform: item.id });
       if (model.source === item.id) clearActivities();
       await refresh(true);
@@ -679,6 +685,7 @@ async function refresh(force = false) {
     renderChoices(byId('targets'), model.source, model.targets, true);
     renderAccounts();
     if (initial) editJob();
+    else renderChoices(byId('job-targets'), byId('job-source').value, new Set(checked('job-targets')), false);
   }
   if (platformsChanged || update('jobs')) { model.jobs = state.jobs; renderJobs(); }
   if (update('files')) {
@@ -692,6 +699,24 @@ async function refresh(force = false) {
   if (update('history')) { model.history = state.history; renderHistory(); }
   if (update('run')) { model.run = state.run; renderRun(); }
   renderControls();
+}
+
+function checkAccountsAfterLogin() {
+  const key = 'sports-sync-check-accounts';
+  if (!model.viewer || !sessionStorage.getItem(key) || model.working || running()) return;
+  return perform(async () => {
+    notice('正在检查已保存的平台账号…');
+    let result;
+    try { result = await api('/api/accounts/check', {}); }
+    catch (error) {
+      if (error.status === 409) { notice('当前操作结束后会检查平台账号。'); return; }
+      sessionStorage.removeItem(key);
+      throw error;
+    }
+    sessionStorage.removeItem(key);
+    await refresh();
+    notice(result.message, result.expired || result.unknown ? 'info' : 'success');
+  });
 }
 
 function drawTrack(tracks) {
@@ -1222,10 +1247,10 @@ document.querySelector('.skip-link').addEventListener('click', event => {
   byId('main').focus();
 });
 showTab();
-refresh(true).catch(error => notice(error.message, 'error'));
+refresh(true).then(checkAccountsAfterLogin).catch(error => notice(error.message, 'error'));
 setInterval(async () => {
   if (model.working || syncing || document.hidden) return;
   syncing = true;
-  try { await refresh(); } catch { /* Keep the current view while the local service is restarting. */ }
+  try { await refresh(); await checkAccountsAfterLogin(); } catch { /* Keep the current view while the local service is restarting. */ }
   finally { syncing = false; }
 }, 2000);

@@ -140,6 +140,7 @@ form.addEventListener('submit', async event => {
       showError(result.error || '操作未完成，请检查填写的信息后重试。');
       return;
     }
+    sessionStorage.setItem('sports-sync-check-accounts', '1');
     location.replace('/#sync');
   } catch {
     showError('无法连接工作台，请稍后重试。');

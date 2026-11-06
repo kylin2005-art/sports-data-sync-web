@@ -80,6 +80,7 @@ function messageOf(error) {
 export class SyncWorkspace {
   #credentials = new Map();
   #verifiedOther = new Set();
+  #accountChecks = new Map();
   #garminAccounts = new Map();
   #seen = new Map();
   #run = null;
@@ -130,6 +131,7 @@ export class SyncWorkspace {
 
   setGarmin(region, result) {
     this.#seen.delete(region);
+    this.#accountChecks.delete(region);
     if (result) this.#garminAccounts.set(region, result.accountKey || `session:${randomUUID()}`);
     else this.#garminAccounts.delete(region);
   }
@@ -171,7 +173,8 @@ export class SyncWorkspace {
   state() {
     return {
       platforms: [...this.platforms.values()].map(platform => ({ ...platform,
-        state: regions.has(platform.id) ? (this.hasSavedGarmin(platform.id) ? 'saved'
+        check: this.#accountChecks.get(platform.id),
+        state: this.#accountChecks.get(platform.id) === 'expired' ? 'expired' : regions.has(platform.id) ? (this.hasSavedGarmin(platform.id) ? 'saved'
           : this.hasGarmin(platform.id) ? 'verified' : 'disconnected')
           : platform.id === 'local' ? 'ready' : this.#credentials.has(platform.id)
             ? (this.#saved.credentials[platform.id] ? 'saved' : this.#verifiedOther.has(platform.id) ? 'verified' : 'configured') : 'disconnected',
@@ -205,6 +208,7 @@ export class SyncWorkspace {
     const data = this.#normalizeCredential(platform, credential);
     await this.#saveConnection('credentials', platform, data);
     this.#credentials.set(platform, data);
+    this.#accountChecks.delete(platform);
     this.#verifiedOther.delete(platform);
     this.#seen.delete(platform);
     return { message: this.sessionVault ? '连接凭据已加密保存，实际读取或上传时校验。' : '凭据已暂存，实际读取或上传时校验。' };
@@ -238,6 +242,7 @@ export class SyncWorkspace {
 
   async disconnect({ platform }) {
     this.#credentials.delete(platform);
+    this.#accountChecks.delete(platform);
     this.#verifiedOther.delete(platform);
     this.#seen.delete(platform);
     if (regions.has(platform)) await this.onGarminInvalid(platform);
@@ -266,7 +271,35 @@ export class SyncWorkspace {
   }
 
   #ready(id) {
-    return id === 'local' || this.#credentials.has(id) || this.#garminAccounts.has(id);
+    return this.#accountChecks.get(id) !== 'expired' &&
+      (id === 'local' || this.#credentials.has(id) || this.#garminAccounts.has(id));
+  }
+
+  async checkAccounts() {
+    const check = async (id, verify) => {
+      let status = 'unsupported';
+      if (verify) {
+        try { await verify(); status = 'valid'; }
+        catch (error) {
+          status = error?.status === 401 || this.#accountChecks.get(id) === 'expired' ? 'expired' : 'unknown';
+        }
+      }
+      return [id, status];
+    };
+    const other = Promise.all([...this.#credentials].map(([id, credential]) => check(id,
+      this.platforms.get(id)?.source && this.sources.verify ? () => this.sources.verify(id, credential) : null)));
+    const garmin = [];
+    // A token refresh can save credentials. Serialize Garmin checks so their vault writes do not overlap.
+    for (const region of this.#garminAccounts.keys()) {
+      garmin.push(await check(region, () => this.garmin.verify(region)));
+    }
+    const results = [...garmin, ...await other];
+    this.#accountChecks = new Map(results);
+    const totals = { valid: 0, expired: 0, unknown: 0, unsupported: 0 };
+    for (const [, status] of results) totals[status]++;
+    return { ...totals, message: results.length ?
+      `平台账号检查完成 · 有效 ${totals.valid} · 需重新连接 ${totals.expired} · 暂无法核验 ${totals.unknown} · 使用时校验 ${totals.unsupported}` :
+      '平台账号检查完成，当前没有已保存的连接。' };
   }
 
   #targetReady(id) {
@@ -411,6 +444,9 @@ export class SyncWorkspace {
     const old = input.id && this.store.jobs().find(job => job.id === input.id);
     if (input.id && !old) throw new WorkspaceError(404, '未找到该同步任务。');
     if (old && this.busy && this.#run.jobId === old.id) throw new WorkspaceError(409, '请先停止正在运行的任务。');
+    for (const target of route.targets) {
+      if (!old?.targets.includes(target)) this.#require(target);
+    }
     const sameRoute = old?.source === route.source && (old.activityType ?? 'all') === activityType &&
       old.targets.length === route.targets.length &&
       old.targets.every(target => route.targets.includes(target));

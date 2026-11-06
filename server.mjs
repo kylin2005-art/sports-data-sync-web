@@ -134,6 +134,7 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
     ['/api/account/browser-connect', input => workspace.connectBrowser(input)],
     ['/api/account/open', input => workspace.openPlatform(input)],
     ['/api/account/verify', input => workspace.verifyPlatform(input)],
+    ['/api/accounts/check', () => workspace.checkAccounts()],
     ['/api/disconnect', input => workspace.disconnect(input)],
     ['/api/list', input => workspace.list(input)],
     ['/api/file-test', input => workspace.testDownload(input)],

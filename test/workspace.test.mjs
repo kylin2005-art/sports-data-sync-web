@@ -584,7 +584,12 @@ test('manually syncing connected targets preserves the saved route and lets a la
     return imported;
   } }).workspace();
   t.after(() => workspace.close());
+  assert.throws(() => workspace.saveJob({ name: '未连接目标', source: 'cn', targets: ['com'], interval: 15 }), /请先连接佳明国际/);
+  workspace.setGarmin('com', { accountKey: 'test-com' });
   const job = workspace.saveJob({ name: '全量同步', source: 'cn', targets: ['com', 'local'], mode: 'all', interval: 15 });
+  workspace.setGarmin('com', null);
+  assert.deepEqual(workspace.saveJob(job).targets, ['com', 'local']);
+  const retained = store.jobs()[0];
   assert.throws(() => workspace.start({ jobId: job.id, connectedOnly: true }), /请先连接佳明中国/);
   workspace.setGarmin('cn', { accountKey: 'test-cn' });
   assert.throws(() => workspace.start({ jobId: job.id }), /请先连接佳明国际/);
@@ -593,7 +598,7 @@ test('manually syncing connected targets preserves the saved route and lets a la
   assert.equal(partial.run.confirmed, 1);
   assert.deepEqual(partial.run.omittedTargets, ['com']);
   assert.deepEqual(partial.history.map(receipt => receipt.target), ['local']);
-  assert.deepEqual(partial.jobs[0], job);
+  assert.deepEqual(partial.jobs[0], retained);
 
   workspace.setGarmin('com', { accountKey: 'test-com' });
   workspace.start({ jobId: job.id });
@@ -602,6 +607,32 @@ test('manually syncing connected targets preserves the saved route and lets a la
   assert.equal(full.run.confirmed, 1);
   assert.equal(uploads, 1);
   assert.ok(full.jobs[0].historyScannedAt);
+});
+
+test('account checks distinguish expired connections from temporary upstream failures', async t => {
+  let cnStatus = 401;
+  const workspace = fixture(new SyncStore(), { verify: async region => {
+    if (region === 'cn' && cnStatus) throw failure(cnStatus, '合成检查失败');
+    if (region === 'com') throw failure(429, '合成限流');
+    return { accountKey: 'test-cn' };
+  } }).workspace();
+  t.after(() => workspace.close());
+  workspace.setGarmin('cn', { accountKey: 'test-cn' });
+  workspace.setGarmin('com', { accountKey: 'test-com' });
+  const { valid, expired, unknown } = await workspace.checkAccounts();
+  assert.deepEqual({ valid, expired, unknown }, { valid: 0, expired: 1, unknown: 1 });
+  const platform = id => workspace.state().platforms.find(item => item.id === id);
+  assert.equal(platform('cn').state, 'expired');
+  assert.equal(platform('com').state, 'verified');
+  assert.equal(platform('com').check, 'unknown');
+  await assert.rejects(workspace.list({ source: 'cn' }), /请先连接佳明中国/);
+  cnStatus = 502;
+  await workspace.checkAccounts();
+  assert.equal(platform('cn').state, 'expired');
+  cnStatus = 0;
+  await workspace.checkAccounts();
+  assert.equal(platform('cn').check, 'valid');
+  assert.equal((await workspace.list({ source: 'cn' })).activities.length, 1);
 });
 
 test('a confirmed original file is not uploaded again from the local library or by releasing the receipt', async t => {
