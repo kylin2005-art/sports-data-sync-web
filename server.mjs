@@ -254,6 +254,17 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
         return response.end(body);
       }
       if (request.method === 'GET' && path === '/api/state') return json(response, 200, verified);
+      if (workspace && (path === '/api/ride-journal' || path === '/api/ride-journal/remove')) {
+        if (request.method === 'GET' && path === '/api/ride-journal') {
+          return json(response, 200, { entries: workspace.store.rideJournal() });
+        }
+        if (request.method === 'POST') {
+          if (request.headers.origin !== expectedOrigin) throw new RequestError(403, '请从当前工作台页面执行操作。');
+          const input = await readInput(request, 16 * 1024);
+          const { updateRideJournal } = await import('./ride-journal.mjs');
+          return json(response, 200, updateRideJournal(input, workspace, path === '/api/ride-journal/remove'));
+        }
+      }
       if (workspace && request.method === 'GET') {
         if (path === '/api/ride-highlights') {
           const { annualRideHighlights } = await import('./ride-highlights.mjs');

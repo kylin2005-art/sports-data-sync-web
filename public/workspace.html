@@ -148,6 +148,17 @@
             <button type="button" id="merge-track" class="button button-secondary" disabled>合并为 GPX</button>
           </div>
         </div>
+        <section class="panel space" aria-labelledby="ride-journal-heading">
+          <p class="eyebrow">ROUTE JOURNAL</p>
+          <h2 id="ride-journal-heading">路线收藏与骑行手账</h2>
+          <p class="muted">从单次骑行分析收藏路线。约骑前可以按标签查找，再查看补水点和路况。</p>
+          <div class="action-row">
+            <label class="field">按标签筛选<select id="ride-journal-filter"><option value="">全部标签</option></select></label>
+            <button type="button" id="ride-journal-refresh" class="button button-quiet">刷新收藏</button>
+          </div>
+          <p id="ride-journal-status" class="muted" role="status"></p>
+          <div id="ride-journal-list" class="record-list"></div>
+        </section>
         <section id="ride-compare" class="panel space" aria-labelledby="ride-compare-heading" hidden>
           <p class="eyebrow">RIDE COMPARISON</p>
           <h2 id="ride-compare-heading" tabindex="-1">同路线骑行对比</h2>
@@ -287,6 +298,7 @@
             <p class="eyebrow">RIDE ANALYSIS</p>
             <h2 id="ride-analysis-heading" tabindex="-1">单次骑行分析</h2>
             <p id="ride-source" class="muted"></p>
+            <button type="button" id="ride-journal-add" class="button button-secondary" hidden>收藏路线</button>
             <dl id="ride-metrics" class="ride-metrics"></dl>
             <h3 class="ride-terrain-heading">3D 海拔轨迹</h3>
             <p id="ride-terrain-note" class="muted"></p>
@@ -316,6 +328,28 @@
             </div>
           </div>
         </section>
+        <dialog id="ride-journal-dialog" aria-labelledby="ride-journal-dialog-title">
+          <form id="ride-journal-form">
+            <h2 id="ride-journal-dialog-title">收藏路线</h2>
+            <label class="field">路线名称<input id="ride-journal-name" type="text" maxlength="120" required autofocus></label>
+            <fieldset class="journal-presets">
+              <legend>常用标签</legend>
+              <div>
+                <label class="choice"><input type="checkbox" name="journal-preset" value="夜骑">夜骑</label>
+                <label class="choice"><input type="checkbox" name="journal-preset" value="风景好">风景好</label>
+                <label class="choice"><input type="checkbox" name="journal-preset" value="适合带新手">适合带新手</label>
+              </div>
+            </fieldset>
+            <label class="field">自定义标签<input id="ride-journal-tags" type="text" maxlength="300" placeholder="例如 河边、周末"></label>
+            <label class="field">补水点<textarea id="ride-journal-water" rows="2" maxlength="800" placeholder="例如 河边公园入口有饮水机"></textarea></label>
+            <label class="field">路况<textarea id="ride-journal-road" rows="2" maxlength="800" placeholder="例如 桥下有碎石，雨天易滑"></textarea></label>
+            <p id="ride-journal-error" class="muted" role="status"></p>
+            <div class="action-row">
+              <button type="submit" id="ride-journal-save" class="button button-primary">保存手账</button>
+              <button type="button" id="ride-journal-cancel" class="button button-secondary">取消</button>
+            </div>
+          </form>
+        </dialog>
         <dialog id="ride-terrain-dialog" aria-labelledby="ride-terrain-dialog-title">
           <div id="ride-terrain-viewer">
             <div class="ride-terrain-toolbar">

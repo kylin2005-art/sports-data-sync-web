@@ -42,6 +42,7 @@ export class SyncStore {
       CREATE TABLE IF NOT EXISTS ride_highlights (
         file_id TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (file_id, version)
       );
+      CREATE TABLE IF NOT EXISTS ride_journal (file_id TEXT PRIMARY KEY NOT NULL, updated TEXT NOT NULL, payload TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS last_run (id INTEGER PRIMARY KEY, payload TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS workout_receipts (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
     `);
@@ -166,6 +167,25 @@ export class SyncStore {
 
   fileNameForExploration(id) {
     return this.db.prepare("SELECT json_extract(payload, '$.name') AS name FROM files WHERE id = ?").get(id)?.name;
+  }
+
+  rideJournal() {
+    return this.db.prepare(`SELECT ride_journal.payload FROM ride_journal JOIN files ON files.id = ride_journal.file_id
+      ORDER BY ride_journal.updated DESC, ride_journal.file_id`).all().map(row => JSON.parse(row.payload));
+  }
+
+  hasRideJournalEntry(id) {
+    return Boolean(this.db.prepare('SELECT 1 FROM ride_journal WHERE file_id = ?').get(id));
+  }
+
+  saveRideJournalEntry(id, entry) {
+    this.db.prepare(`INSERT INTO ride_journal (file_id, updated, payload) VALUES (?, ?, ?)
+      ON CONFLICT(file_id) DO UPDATE SET updated = excluded.updated, payload = excluded.payload`)
+      .run(id, new Date().toISOString(), JSON.stringify({ id, ...entry }));
+  }
+
+  removeRideJournalEntry(id) {
+    this.db.prepare('DELETE FROM ride_journal WHERE file_id = ?').run(id);
   }
 
   unindexedRideHighlightFiles(version) {

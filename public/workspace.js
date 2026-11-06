@@ -44,6 +44,7 @@ const model = {
 const trackLibrary = { page: null, start: 0, loading: false, retryStart: 0, sort: 'startTime', direction: -1 };
 let monthlyRide = null;
 let highlightsRequest = 0;
+let journalEntries = null, journalLoad = null, journalEditing = null, journalSaving = false;
 const trackDate = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
 const trackColumns = [
   ['durationSeconds', rideDuration], ['distanceM', value => (value / 1000).toFixed(2)],
@@ -144,6 +145,7 @@ function showTab() {
   const hash = location.hash.slice(1);
   const current = tabs.includes(hash) ? hash : 'sync';
   if (current !== 'tracks' && byId('ride-terrain-dialog').open) byId('ride-terrain-dialog').close();
+  if (current !== 'tracks' && byId('ride-journal-dialog').open && !journalSaving) byId('ride-journal-dialog').close();
   if (current !== 'tracks' && monthlyRide) clearMonthlyRide();
   document.querySelectorAll('[data-panel]').forEach(node => { node.hidden = node.dataset.panel !== current; });
   document.querySelectorAll('[data-tab]').forEach(node => {
@@ -151,6 +153,7 @@ function showTab() {
     else node.removeAttribute('aria-current');
   });
   if (current === 'tracks' && !trackLibrary.page) loadTrackLibrary();
+  if (current === 'tracks' && !journalEntries) loadRideJournal();
 }
 
 function renderSelect(select, selected) {
@@ -1249,6 +1252,121 @@ function saveRideImage(method, canvasId, filename, report = notice) {
   });
 }
 
+function refreshJournalButton() {
+  const ride = model.ride;
+  const entry = journalEntries?.find(item => item.id === ride?.id);
+  const action = byId('ride-journal-add');
+  action.hidden = !entry && !ride?.data.mapSegments?.length;
+  action.textContent = entry ? '编辑路线手账' : '收藏路线';
+}
+
+function renderRideJournal() {
+  if (!journalEntries) return;
+  const filter = byId('ride-journal-filter').value;
+  const entries = filter ? journalEntries.filter(entry => entry.tags.includes(filter)) : journalEntries;
+  byId('ride-journal-status').textContent = entries.length ? `${entries.length} 条收藏路线` :
+    '还没有收藏路线。打开单次骑行分析，点击「收藏路线」。';
+  byId('ride-journal-list').replaceChildren(...entries.map(entry => {
+    const open = button('查看路线', () => openRide(entry.id));
+    open.dataset.openRide = '';
+    open.disabled = model.working;
+    const row = recordRow(entry.title, '', [open, button('编辑手账', () => openRideJournal(entry.id, entry.title)),
+      button('取消收藏', () => removeRideJournal(entry), 'quiet')]);
+    const body = row.querySelector('.record-main');
+    if (entry.tags.length) {
+      const tags = element('ul', 'journal-tags');
+      tags.setAttribute('aria-label', '路线标签');
+      tags.append(...entry.tags.map(tag => element('li', '', tag)));
+      body.append(tags);
+    }
+    const notes = element('dl', 'journal-notes');
+    for (const [label, value] of [['补水点', entry.water], ['路况', entry.road]]) {
+      if (value) notes.append(element('dt', '', label), element('dd', 'record-meta', value));
+    }
+    if (notes.childNodes.length) body.append(notes);
+    return row;
+  }));
+}
+
+function setRideJournal(entries) {
+  journalEntries = entries;
+  const select = byId('ride-journal-filter');
+  const previous = select.value;
+  const tags = [...new Set(entries.flatMap(entry => entry.tags))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  select.replaceChildren(new Option('全部标签', ''), ...tags.map(tag => new Option(tag, tag)));
+  select.value = tags.includes(previous) ? previous : '';
+  renderRideJournal();
+  refreshJournalButton();
+}
+
+function loadRideJournal() {
+  if (journalLoad) return journalLoad;
+  const refresh = byId('ride-journal-refresh');
+  refresh.disabled = true;
+  byId('ride-journal-status').textContent = '正在读取路线收藏…';
+  journalLoad = api('/api/ride-journal')
+    .then(({ entries }) => setRideJournal(entries))
+    .catch(error => { byId('ride-journal-status').textContent = error.message || '读取收藏失败，请重试。'; })
+    .finally(() => { journalLoad = null; refresh.disabled = false; });
+  return journalLoad;
+}
+
+const journalPresets = () => [...document.querySelectorAll('input[name="journal-preset"]')];
+
+async function openRideJournal(id, title) {
+  if (journalSaving || byId('ride-journal-dialog').open) return;
+  if (!journalEntries || journalLoad) await loadRideJournal();
+  if (!journalEntries || location.hash !== '#tracks' || byId('ride-journal-dialog').open) return;
+  const entry = journalEntries.find(item => item.id === id);
+  const presets = journalPresets();
+  const tags = entry?.tags ?? [];
+  journalEditing = id;
+  byId('ride-journal-dialog-title').textContent = entry ? '编辑路线手账' : '收藏路线';
+  byId('ride-journal-name').value = (entry?.title ?? title ?? '骑行路线').slice(0, 120);
+  presets.forEach(input => { input.checked = tags.includes(input.value); });
+  byId('ride-journal-tags').value = tags.filter(tag => !presets.some(input => input.value === tag)).join('、');
+  byId('ride-journal-water').value = entry?.water ?? '';
+  byId('ride-journal-road').value = entry?.road ?? '';
+  byId('ride-journal-error').textContent = '';
+  byId('ride-journal-dialog').showModal();
+}
+
+async function saveRideJournal(event) {
+  event.preventDefault();
+  if (!journalEditing || journalSaving) return;
+  const save = byId('ride-journal-save'), cancel = byId('ride-journal-cancel');
+  journalSaving = save.disabled = cancel.disabled = true;
+  const custom = byId('ride-journal-tags').value.split(/[,，、]/).map(tag => tag.trim()).filter(Boolean);
+  const tags = [...new Set([...journalPresets().filter(input => input.checked).map(input => input.value), ...custom])];
+  try {
+    const { entries } = await api('/api/ride-journal', { id: journalEditing, tags,
+      title: byId('ride-journal-name').value, water: byId('ride-journal-water').value, road: byId('ride-journal-road').value });
+    setRideJournal(entries);
+    byId('ride-journal-dialog').close();
+    notice('路线手账已保存。', 'success');
+  } catch (error) {
+    byId('ride-journal-error').textContent = error.message || '保存手账失败，请重试。';
+  } finally {
+    journalSaving = save.disabled = cancel.disabled = false;
+  }
+}
+
+async function removeRideJournal(entry) {
+  if (journalSaving || !confirm(`取消收藏「${entry.title}」？该路线的手账也会移除。`)) return;
+  journalSaving = true;
+  try {
+    if (journalLoad) await journalLoad;
+    const { entries } = await api('/api/ride-journal/remove', { id: entry.id });
+    setRideJournal(entries);
+    byId('ride-journal-filter').focus();
+    notice('已取消收藏。', 'success');
+  } catch (error) {
+    notice(error.message || '取消收藏失败，请重试。', 'error');
+  } finally {
+    journalSaving = false;
+  }
+}
+
 function openRide(id) {
   if (model.working) return;
   byId('ride-compare').hidden = true;
@@ -1266,6 +1384,7 @@ function openRide(id) {
     const hasTerrain = hasRideTerrain(data.route);
     model.ride = { id, data, drawCard: drawRideCard, drawTerrain: drawRideTerrain, hasRideTerrain, hasTerrain,
       cardRouteView: '3d', downloadCanvas, shareCanvas };
+    refreshJournalButton();
     const canMap = Boolean(data.mapSegments?.length);
     byId('ride-map-toggle').hidden = !canMap;
     byId('ride-map-toggle').disabled = false;
@@ -1494,6 +1613,15 @@ byId('track-png').addEventListener('click', () => {
     .catch(() => notice('无法生成 PNG 图片，请重试。', 'error'));
 });
 byId('analyze-ride').addEventListener('click', () => openRide(model.tracks.values().next().value));
+byId('ride-journal-refresh').addEventListener('click', loadRideJournal);
+byId('ride-journal-filter').addEventListener('change', renderRideJournal);
+byId('ride-journal-add').addEventListener('click', () => {
+  if (model.ride) openRideJournal(model.ride.id, model.ride.data.name);
+});
+byId('ride-journal-form').addEventListener('submit', saveRideJournal);
+byId('ride-journal-dialog').addEventListener('close', () => { journalEditing = null; });
+byId('ride-journal-dialog').addEventListener('cancel', event => { if (journalSaving) event.preventDefault(); });
+byId('ride-journal-cancel').addEventListener('click', () => byId('ride-journal-dialog').close());
 byId('compare-ride').addEventListener('click', openRideComparison);
 for (const control of ['ride-title', 'ride-theme', 'ride-ratio', 'ride-route', 'ride-date']) {
   byId(control).addEventListener(control === 'ride-title' ? 'input' : 'change', refreshRideCard);

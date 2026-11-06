@@ -485,6 +485,26 @@ body:has(.workspace) #credential-dialog {
 .workspace #ride-highlights-cards .ride-metric { display: grid; align-content: start; gap: 5px; overflow-wrap: anywhere; }
 .workspace #ride-highlights-cards .button { justify-self: start; margin-top: 3px; }
 .workspace #ride-highlights-cards .highlight-value { font-size: 24px; font-weight: 700; color: var(--panel-text); }
+.workspace #ride-journal-dialog {
+  width: min(500px, calc(100% - 28px)); max-height: calc(100dvh - 28px); padding: clamp(16px, 4vw, 24px);
+  border: 1px solid var(--panel-line); border-radius: var(--panel-radius); color: var(--panel-text); background: #fff;
+}
+.workspace #ride-journal-dialog::backdrop { background: #14294570; }
+.workspace #ride-journal-dialog textarea {
+  width: 100%; padding: 8px 12px; border: 1px solid var(--panel-control-line); border-radius: 8px;
+  background: #fff; color: var(--panel-text); font: inherit; font-weight: 400; resize: vertical;
+}
+.workspace #ride-journal-dialog textarea:focus-visible { outline: 2px solid var(--panel-accent); outline-offset: 1px; }
+.workspace .journal-presets { border: 0; padding: 0; margin: 15px 0 0; }
+.workspace .journal-presets legend { font-size: 14px; font-weight: 600; }
+.workspace .journal-presets > div, .workspace .journal-tags { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.workspace .journal-tags { margin: 5px 0; padding: 0; list-style: none; }
+.workspace .journal-tags li { border-radius: 12px; background: var(--panel-subtle); color: var(--panel-accent-dark); font-size: 13px; padding: 2px 8px; }
+.workspace .journal-notes { margin: 6px 0 0; }
+.workspace .journal-notes dt { font-size: 13px; font-weight: 600; }
+.workspace .journal-notes dd { margin: 0 0 5px; white-space: pre-wrap; }
+.workspace #ride-journal-status, .workspace #ride-journal-error { margin-top: 8px; }
+.workspace #ride-journal-add { margin-top: 10px; }
 .workspace #ride-exploration-results > .muted { margin: 10px 0; }
 
 .workspace .ride-analysis > .muted,
