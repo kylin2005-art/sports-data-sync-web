@@ -88,7 +88,7 @@ function segments(value) {
     Array.isArray(point) && Number.isFinite(point[0]) && Number.isFinite(point[1]))).filter(line => line.length > 1);
 }
 
-function plot(ctx, lines, area, palette, elevation = false) {
+export function plotRideRoute(ctx, lines, area, palette, elevation = false) {
   let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
   for (const line of lines) {
     for (const [x, y] of line) {
@@ -222,14 +222,14 @@ export function drawRideCard(canvas, ride, options = {}) {
   }
   if (!trackDrawn && tracks.length) {
     grid(ctx, routeArea, palette.grid);
-    trackDrawn = plot(ctx, tracks, {
+    trackDrawn = plotRideRoute(ctx, tracks, {
       x: plotX + 28, y: plotY + 18, width: plotWidth - 56, height: routeArea.height - 36,
     }, palette);
   }
   if (elevation.length) {
     const profile = trackDrawn ? { ...area, y: plotY + plotHeight - 105, height: 105 } : area;
     text(ctx, '海拔走势', plotX, profile.y, 22, palette.muted);
-    plot(ctx, elevation, {
+    plotRideRoute(ctx, elevation, {
       x: profile.x + 4, y: profile.y + 36, width: profile.width - 8, height: profile.height - 42,
     }, palette, true);
   } else if (!trackDrawn) {

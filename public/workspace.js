@@ -42,6 +42,7 @@ const model = {
   credential: null, jobId: null, tracks: new Set(), ride: null, viewer: null, features: {}, workoutTargets: [],
 };
 const trackLibrary = { page: null, start: 0, loading: false, retryStart: 0, sort: 'startTime', direction: -1 };
+let monthlyRide = null;
 const trackDate = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
 const trackColumns = [
   ['durationSeconds', rideDuration], ['distanceM', value => (value / 1000).toFixed(2)],
@@ -142,6 +143,7 @@ function showTab() {
   const hash = location.hash.slice(1);
   const current = tabs.includes(hash) ? hash : 'sync';
   if (current !== 'tracks' && byId('ride-terrain-dialog').open) byId('ride-terrain-dialog').close();
+  if (current !== 'tracks' && monthlyRide) clearMonthlyRide();
   document.querySelectorAll('[data-panel]').forEach(node => { node.hidden = node.dataset.panel !== current; });
   document.querySelectorAll('[data-tab]').forEach(node => {
     if (node.dataset.tab === current) node.setAttribute('aria-current', 'page');
@@ -842,6 +844,118 @@ async function toggleRideExploration() {
   }
 }
 
+function clearMonthlyRide() {
+  const report = monthlyRide;
+  monthlyRide = null;
+  report?.map?.destroy();
+  byId('ride-month-result').hidden = true;
+  byId('ride-month-status').textContent = '';
+  byId('ride-month-load').disabled = false;
+}
+
+async function loadMonthlyRide() {
+  clearMonthlyRide();
+  const status = byId('ride-month-status');
+  const month = byId('ride-month-input').value;
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    status.textContent = '请选择月份。';
+    return;
+  }
+  const report = { month };
+  monthlyRide = report;
+  const timeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const params = new URLSearchParams({ month, tz: timeZone || 'UTC' });
+  const load = byId('ride-month-load');
+  const mapView = byId('ride-month-map-view');
+  load.disabled = true;
+  status.textContent = '正在汇总当月格子…';
+  try {
+    const [data, { drawMonthlyPostcard, monthlyRecord }, image] = await Promise.all([
+      api(`/api/ride-exploration/month?${params}`), import('/ride-exploration.js'), import('/ride-image.js'),
+    ]);
+    if (monthlyRide !== report) return;
+    if (!data.highlight) {
+      status.textContent = '该月没有带定位和日期的骑行。请选择其他月份，或先导入 FIT / GPX。';
+      return;
+    }
+    Object.assign(report, { data, drawMonthlyPostcard, image });
+    byId('ride-month-count').textContent = data.rideCount.toLocaleString('zh-CN');
+    byId('ride-month-cells').textContent = data.heatCells.length.toLocaleString('zh-CN');
+    byId('ride-month-highlight').textContent = `${data.highlight.name} · 单次覆盖 ${data.highlight.cells.toLocaleString('zh-CN')} 格`;
+    byId('ride-month-record').textContent = monthlyRecord(data);
+    byId('ride-month-route').checked = false;
+    byId('ride-month-route').disabled = false;
+    byId('ride-month-download').disabled = false;
+    byId('ride-month-share').disabled = false;
+    report.drawMonthlyPostcard(byId('ride-month-card'), data);
+    byId('ride-month-result').hidden = false;
+    mapView.hidden = false;
+    const { createRideMap } = await import('/ui/ride-map.js');
+    if (monthlyRide !== report) return;
+    const openMap = basemap => {
+      report.map = createRideMap(byId('ride-month-map'), [], {
+        grid: data, terrain: false, basemap,
+        onStatus({ state, message }) {
+          if (monthlyRide !== report) return;
+          status.textContent = message;
+          if (state !== 'error') return;
+          if (basemap && message.startsWith('街道底图')) {
+            queueMicrotask(() => { if (monthlyRide === report) openMap(false); });
+          } else {
+            mapView.hidden = true;
+          }
+        },
+      });
+    };
+    openMap(true);
+  } catch (error) {
+    if (monthlyRide !== report) return;
+    mapView.hidden = true;
+    status.textContent = report.data ? '热图暂时无法加载，仍可保存明信片。' : (error.message || '月度骑行读取失败。');
+  } finally {
+    if (monthlyRide === report) load.disabled = false;
+  }
+}
+
+async function updateMonthlyRoute() {
+  const report = monthlyRide;
+  if (!report?.data) return;
+  const toggle = byId('ride-month-route');
+  const download = byId('ride-month-download');
+  const share = byId('ride-month-share');
+  toggle.disabled = download.disabled = share.disabled = true;
+  try {
+    if (toggle.checked && !report.trimmedRoute) {
+      const { trimmedRoute } = await api(`/api/ride/${encodeURIComponent(report.data.highlight.id)}`);
+      if (monthlyRide !== report) return;
+      report.trimmedRoute = trimmedRoute;
+    }
+    if (toggle.checked && !report.trimmedRoute.length) {
+      toggle.checked = false;
+      notice('这趟骑行裁剪后没有可用的路线。');
+    }
+    report.drawMonthlyPostcard(byId('ride-month-card'), report.data, toggle.checked ? report.trimmedRoute : []);
+  } catch {
+    if (monthlyRide !== report) return;
+    toggle.checked = false;
+    notice('暂时无法读取代表骑行的裁剪路线。', 'error');
+  } finally {
+    if (monthlyRide === report) toggle.disabled = download.disabled = share.disabled = false;
+  }
+}
+
+async function saveMonthlyRide(method) {
+  const report = monthlyRide;
+  if (!report?.data) return;
+  try {
+    const outcome = await report.image[method](byId('ride-month-card'), `骑行明信片-${report.month}.png`);
+    if (outcome === 'downloaded') notice('PNG 图片已保存。', 'success');
+    if (outcome === 'cancelled') notice('分享未完成，可以直接下载 PNG。');
+  } catch {
+    notice('无法生成 PNG 图片，请重试。', 'error');
+  }
+}
+
 function showRideMapLegend(legend, estimatedSpeed) {
   const list = byId('ride-map-legend');
   const items = legend.map(({ label, color }) => {
@@ -1297,6 +1411,16 @@ byId('ride-exploration-toggle').addEventListener('click', toggleRideExploration)
 byId('exploration-fit-all').addEventListener('click', () => model.ride?.explorationMap?.fitExploration());
 byId('exploration-download').addEventListener('click', () => saveRideImage('downloadCanvas', 'exploration-card', '骑行探索卡.png'));
 byId('exploration-share').addEventListener('click', () => saveRideImage('shareCanvas', 'exploration-card', '骑行探索卡.png'));
+const monthToday = new Date();
+byId('ride-month-input').value = `${monthToday.getFullYear()}-${String(monthToday.getMonth() + 1).padStart(2, '0')}`;
+byId('ride-month-input').addEventListener('input', clearMonthlyRide);
+byId('ride-month-load').addEventListener('click', loadMonthlyRide);
+byId('ride-month-open').addEventListener('click', () => {
+  if (monthlyRide?.data) openRide(monthlyRide.data.highlight.id);
+});
+byId('ride-month-route').addEventListener('change', updateMonthlyRoute);
+byId('ride-month-download').addEventListener('click', () => saveMonthlyRide('downloadCanvas'));
+byId('ride-month-share').addEventListener('click', () => saveMonthlyRide('shareCanvas'));
 byId('start-record').addEventListener('click', startRecording);
 byId('stop-record').addEventListener('click', () => stopRecording());
 byId('save-record').addEventListener('click', () => perform(async () => {

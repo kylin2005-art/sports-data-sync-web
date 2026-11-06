@@ -161,6 +161,10 @@ export class SyncStore {
       ON ride_exploration.file_id = files.id AND ride_exploration.version = ? ORDER BY files.rowid`).all(version);
   }
 
+  fileNameForExploration(id) {
+    return this.db.prepare("SELECT json_extract(payload, '$.name') AS name FROM files WHERE id = ?").get(id)?.name;
+  }
+
   trackLibraryPage(start, limit) {
     const { total } = this.db.prepare('SELECT COUNT(*) AS total FROM files').get();
     const files = this.db.prepare(`SELECT payload FROM files

@@ -8,6 +8,7 @@ const INDEX_VERSION = 1;
 const RADIANS = Math.PI / 180;
 const RADIUS = 6378137;
 const timeMs = value => value ? Date.parse(value) : NaN;
+const cellPair = key => key.split(',').map(Number);
 
 function readCells(file) {
   const { startTime, segments } = readRideExplorationTrack(file);
@@ -47,6 +48,40 @@ export async function buildRideExplorationIndex(store) {
   }
 }
 
+export async function rideExplorationMonth(store, month, timeZone = 'UTC') {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month < '1970-01') {
+    throw new WorkspaceError(400, '请选择有效的活动月份。');
+  }
+  let calendar;
+  try {
+    calendar = new Intl.DateTimeFormat('en', { timeZone, year: 'numeric', month: '2-digit' });
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    throw new WorkspaceError(400, '月份时区无效。');
+  }
+  await buildRideExplorationIndex(store);
+  const visits = new Map();
+  let rideCount = 0, highlight = null, previousBest = null;
+  for (const { id, payload } of store.rideExplorationInArchiveOrder(INDEX_VERSION)) {
+    const { cells, time } = JSON.parse(payload);
+    if (!cells?.length || !Number.isFinite(time)) continue;
+    const parts = calendar.formatToParts(time);
+    const year = parts.find(part => part.type === 'year').value;
+    if (year !== month.slice(0, 4)) continue;
+    const activityMonth = `${year}-${parts.find(part => part.type === 'month').value}`;
+    if (activityMonth < month) previousBest = Math.max(previousBest ?? 0, cells.length);
+    if (activityMonth !== month) continue;
+    rideCount++;
+    for (const cell of cells) visits.set(cell, (visits.get(cell) ?? 0) + 1);
+    if (!highlight || cells.length > highlight.cells || (cells.length === highlight.cells && time < highlight.time)) {
+      highlight = { id, time, cells: cells.length };
+    }
+  }
+  if (highlight) highlight.name = store.fileNameForExploration(highlight.id);
+  return { month, cellMeters: CELL_METERS, rideCount, highlight, previousBest,
+    heatCells: [...visits].map(([key, count]) => [...cellPair(key), count]) };
+}
+
 export function createRideExploration(store) {
   return async function explore(id) {
     const selected = indexFile(store, id);
@@ -64,12 +99,11 @@ export function createRideExploration(store) {
         ? prior.time < selected.time : i < selectedIndex;
       if (precedes) for (const cell of prior.cells) earlier.add(cell);
     }
-    const split = key => key.split(',').map(Number);
     return {
       cellMeters: CELL_METERS,
-      currentCells: selected.cells.map(split),
-      previousCells: [...earlier].map(split),
-      newCells: selected.cells.filter(cell => !earlier.has(cell)).map(split),
+      currentCells: selected.cells.map(cellPair),
+      previousCells: [...earlier].map(cellPair),
+      newCells: selected.cells.filter(cell => !earlier.has(cell)).map(cellPair),
     };
   };
 }

@@ -8,7 +8,7 @@ import { Encoder, Profile } from '@garmin/fitsdk';
 import { createMultiUserServer } from '../multi-user-server.mjs';
 import { createWorkspaceHandler } from '../server.mjs';
 import { SyncStore } from '../sync-store.mjs';
-import { buildRideExplorationIndex, createRideExploration } from '../ride-exploration.mjs';
+import { buildRideExplorationIndex, createRideExploration, rideExplorationMonth } from '../ride-exploration.mjs';
 
 function gpx(lons, day, fileName = 'ride.gpx') {
   const points = lons.map((lon, i) => `<trkpt lat="1" lon="${lon}">${day ?
@@ -60,6 +60,9 @@ test('exploration compares ride chronology across FIT and GPX, using every archi
   const fetchRide = (owner, id) => fetch(`http://127.0.0.1:${server.address().port}/api/ride/${id}/exploration`,
     { headers: owner ? { Cookie: `sports_sync_session=${owner}` } : {} });
   assert.equal((await fetchRide(null, selected)).status, 401);
+  const fetchMonth = owner => fetch(`http://127.0.0.1:${server.address().port}/api/ride-exploration/month?month=2026-10`,
+    { headers: owner ? { Cookie: `sports_sync_session=${owner}` } : {} });
+  assert.equal((await fetchMonth(null)).status, 401);
   assert.equal((await fetchRide('bob', selected)).status, 404);
   assert.equal((await fetchRide('alice', bobId)).status, 404);
   assert.equal((await fetchRide('alice', running)).status, 422);
@@ -82,6 +85,46 @@ test('exploration compares ride chronology across FIT and GPX, using every archi
   assert.equal(recomputed.previousCells.length, 3);
   assert.deepEqual(recomputed.newCells, []);
   assert.equal((await (await fetchRide('bob', bobId)).json()).previousCells.length, 0);
+  assert.equal((await (await fetchMonth('alice')).json()).rideCount, 4);
+  const bobMonth = await (await fetchMonth('bob')).json();
+  assert.equal(bobMonth.rideCount, 1);
+  assert.equal(bobMonth.highlight.id, bobId);
+});
+
+test('monthly exploration uses local month boundaries and prior months in the same year', async () => {
+  const store = new SyncStore();
+  try {
+    function archive(lons, date) {
+      const { fileName, data } = gpx(lons, '01');
+      return store.archive({ fileName, data: Buffer.from(data.toString().replaceAll('2026-10-01T10:', date)) });
+    }
+    archive([0.002, 0.006, 0.010, 0.014, 0.018], '2025-12-20T10:');
+    archive([0.002, 0.006], '2026-10-12T10:');
+    const boundary = archive([0.002, 0.006, 0.010], '2026-10-31T23:');
+    assert.equal(archive([0.002, 0.006, 0.010], '2026-10-31T23:'), boundary);
+    archive([0.006, 0.0101, 0.0102], '2026-11-02T10:');
+    archive([0.002, 0.006, 0.010, 0.014, 0.018], '2026-12-20T10:');
+    store.archive(gpx([0.018, 0.022], null));
+    await buildRideExplorationIndex(store);
+    store.file = () => { throw new Error('monthly report read a source file'); };
+
+    const china = await rideExplorationMonth(store, '2026-11', 'Asia/Shanghai');
+    assert.equal(china.rideCount, 2);
+    assert.equal(china.highlight.id, boundary);
+    assert.equal(china.highlight.cells, 3);
+    assert.equal(china.previousBest, 2);
+    assert.deepEqual(china.heatCells.map(cell => cell[2]), [1, 2, 2]);
+
+    const utc = await rideExplorationMonth(store, '2026-11', 'UTC');
+    assert.equal(utc.rideCount, 1);
+    assert.equal(utc.previousBest, 3);
+    assert.deepEqual(utc.heatCells.map(cell => cell[2]), [1, 1]);
+    assert.equal((await rideExplorationMonth(store, '2026-01')).highlight, null);
+    await assert.rejects(rideExplorationMonth(store, '2026-13'), { status: 400 });
+    await assert.rejects(rideExplorationMonth(store, '2026-11', 'Invalid/Zone'), { status: 400 });
+  } finally {
+    store.close();
+  }
 });
 
 test('the exploration index survives reopening a legacy archive and only reads new files', async () => {

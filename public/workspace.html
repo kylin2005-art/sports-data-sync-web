@@ -147,6 +147,47 @@
             <button type="button" id="merge-track" class="button button-secondary" disabled>合并为 GPX</button>
           </div>
         </div>
+        <section class="panel space" aria-labelledby="ride-month-heading">
+          <p class="eyebrow">RIDE RECAP</p>
+          <h2 id="ride-month-heading">月度骑行明信片</h2>
+          <p class="muted">回看当月的骑行热图、代表骑行和探索纪录。生成热图时，浏览器会向底图服务请求当前区域的瓦片。</p>
+          <div class="action-row">
+            <label class="field">活动月份<input id="ride-month-input" type="month" placeholder="例如 2026-11" min="1970-01"></label>
+            <button type="button" id="ride-month-load" class="button button-primary">生成月报</button>
+          </div>
+          <p id="ride-month-status" class="muted" role="status"></p>
+          <div id="ride-month-result" hidden>
+            <dl class="ride-metrics exploration-metrics">
+              <div class="ride-metric"><dt>带定位的骑行</dt><dd id="ride-month-count"></dd></div>
+              <div class="ride-metric"><dt>当月覆盖格子</dt><dd id="ride-month-cells"></dd></div>
+            </dl>
+            <div id="ride-month-map-view">
+              <h3>当月热图</h3>
+              <ul class="ride-map-legend" aria-label="当月热图图例">
+                <li><span class="swatch month-heat-low" aria-hidden="true"></span>1 次骑行</li>
+                <li><span class="swatch month-heat-mid" aria-hidden="true"></span>2–3 次骑行</li>
+                <li><span class="swatch month-heat-high" aria-hidden="true"></span>4 次及以上</li>
+              </ul>
+              <div id="ride-month-map" aria-label="可交互的当月骑行热图"></div>
+            </div>
+            <div class="ride-month-highlight">
+              <h3>代表骑行</h3>
+              <p id="ride-month-highlight"></p>
+              <p id="ride-month-record" class="muted"></p>
+              <button type="button" id="ride-month-open" class="button button-secondary">分析这趟骑行</button>
+            </div>
+            <div class="ride-month-highlight">
+              <h3>明信片预览</h3>
+              <p class="muted">分享图默认只显示月份和统计。裁剪轮廓仍可能被熟悉路线的人认出。</p>
+              <label class="choice"><input id="ride-month-route" type="checkbox">添加裁剪后的代表路线</label>
+              <div class="ride-preview"><canvas id="ride-month-card" width="1080" height="1440" aria-label="月度骑行明信片预览"></canvas></div>
+              <div class="action-row">
+                <button type="button" id="ride-month-download" class="button button-primary">下载明信片 PNG</button>
+                <button type="button" id="ride-month-share" class="button button-secondary">分享明信片</button>
+              </div>
+            </div>
+          </div>
+        </section>
         <div class="panel space" id="track-preview" hidden>
           <h2>轨迹预览</h2><p id="track-info" class="muted">可叠加多条轨迹并导出透明贴纸。</p>
           <canvas id="track-canvas" width="900" height="600" aria-label="轨迹图"></canvas>
