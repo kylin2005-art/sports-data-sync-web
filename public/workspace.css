@@ -403,7 +403,10 @@ body:has(.workspace) #credential-dialog {
   overflow-wrap: anywhere;
 }
 
+.workspace .run-log .log-level { margin-inline-end: .6em; }
+.workspace .run-log li[data-level="success"] { color: #166534; }
 .workspace .run-log li[data-level="error"] { color: #963c32; }
+.workspace .run-log li[data-level="pending"] { color: #825000; }
 
 .workspace #track-table-help { margin: 7px 0 14px; }
 .workspace .track-table-scroll { overflow-x: auto; border: 1px solid var(--panel-line); border-radius: 10px; }

@@ -574,11 +574,12 @@ export class SyncWorkspace {
       if (regions.has(target) && old.activityId && ['sending', 'accepted', 'unconfirmed'].includes(old.status)) {
         const verified = await this.garmin.confirm(target, old.activityId);
         this.store.saveReceipt(key, { ...old, ...verified, status: 'confirmed', message: '已通过活动编号重新核对。' });
-        this.#log(`${activity.name} → ${this.platforms.get(target).name}：已通过活动编号重新核对。`);
+        this.#log(`${activity.name} → ${this.platforms.get(target).name}：已通过活动编号重新核对。`, 'success');
         return 'confirmed';
       }
-      this.#log(`${activity.name} → ${this.platforms.get(target).name}：['confirmed', 'duplicate', 'guided'].includes(old.status)
-        ? '已有记录，跳过' : '上次上传结果待核对，已拦截重传'}。`);
+      const pending = ['sending', 'accepted', 'unconfirmed'].includes(old.status);
+      this.#log(`${activity.name} → ${this.platforms.get(target).name}：${pending
+        ? '上次上传结果待核对，已拦截重传' : '已有记录，跳过'}。`, pending ? 'pending' : 'info');
       return 'skipped';
     }
     if (this.#run.stopRequested) return null;
@@ -588,7 +589,7 @@ export class SyncWorkspace {
     }
     if (target === 'local') {
       this.store.saveReceipt(key, { ...receipt, fileId: file.fileId, status: 'confirmed', message: '已保存原始文件。' });
-      this.#log(`${activity.name}：已保存原始文件。`);
+      this.#log(`${activity.name}：已保存原始文件。`, 'success');
       return 'confirmed';
     }
     const format = file.fileName.split('.').at(-1).toLowerCase();
@@ -645,7 +646,8 @@ export class SyncWorkspace {
       }
       this.store.saveReceipt(key, { ...receipt, fileId: file.fileId, status: result.status,
         activityId: result.activityId, url: result.url, message: result.message });
-      this.#log(`${activity.name} → ${this.platforms.get(target).name}：${result.message}`);
+      const level = result.status === 'confirmed' ? 'success' : result.status === 'accepted' ? 'pending' : 'info';
+      this.#log(`${activity.name} → ${this.platforms.get(target).name}：${result.message}`, level);
       return result.status === 'accepted' ? 'unconfirmed' : result.status === 'duplicate' ? 'skipped' : 'confirmed';
     } catch (error) {
       if (!attempted && this.#run.stopRequested) return null;
@@ -661,7 +663,7 @@ export class SyncWorkspace {
       if (uncertain) {
         this.#run.unconfirmed++;
         this.#recordIssue(error, previous?.activityId ? 'confirm' : 'upload', target);
-        this.#log(`${activity.name} → ${this.platforms.get(target).name}：${messageOf(error)}`, 'error');
+        this.#log(`${activity.name} → ${this.platforms.get(target).name}：${messageOf(error)}`, 'pending');
         await this.#invalidate(error, target);
         if ([401, 429].includes(error.status)) this.#run.stopRequested = true;
         return null;
@@ -724,7 +726,7 @@ export class SyncWorkspace {
             this.#run[pending ? 'unconfirmed' : 'failed']++;
             if (error === downloadError) this.#recordIssue(error, 'download', route.source);
             else this.#recordIssue(error, pending ? 'confirm' : 'upload', target);
-            this.#log(`${activity.name} → ${this.platforms.get(target).name}：${messageOf(error)}`, 'error');
+            this.#log(`${activity.name} → ${this.platforms.get(target).name}：${messageOf(error)}`, pending ? 'pending' : 'error');
             if (consecutiveDownload406s >= 2 && error === downloadError) {
               this.#log('来源连续两次拒绝原始文件下载（HTTP 406），已停止本批任务。', 'error');
               this.#run.stopRequested = true;

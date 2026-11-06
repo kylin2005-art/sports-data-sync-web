@@ -612,9 +612,12 @@ function renderRun() {
     renderRunHelp(run);
     const log = byId('run-log');
     const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 15;
+    const logLabels = { success: '成功', error: '错误', pending: '待核对' };
     log.replaceChildren(...run.logs.map(item => {
-      const line = element('li', '', `${formatTime(item.time)}  ${item.message}`);
+      const line = element('li', '', `${formatTime(item.time)}  `);
       line.dataset.level = item.level;
+      if (Object.hasOwn(logLabels, item.level)) line.append(element('strong', 'log-level', logLabels[item.level]));
+      line.append(item.message);
       return line;
     }));
     if (atBottom) log.scrollTop = log.scrollHeight;
