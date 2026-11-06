@@ -231,6 +231,13 @@
 
       <section id="run-panel" class="panel space" aria-labelledby="run-title" hidden>
         <div class="panel-top"><div><h2 id="run-title">运行日志</h2><p id="run-summary" class="muted" aria-live="polite"></p></div><button id="stop" class="button button-secondary" type="button" hidden>停止同步</button></div>
+        <div id="run-help" class="notice info" hidden>
+          <p id="run-guidance" role="status"></p>
+          <div id="run-help-actions" class="action-row" hidden>
+            <a id="run-help-accounts" class="button button-quiet" href="#accounts" hidden>前往平台账号</a>
+            <a id="run-help-records" class="button button-quiet" href="#records" hidden>前往记录中心</a>
+          </div>
+        </div>
         <ol id="run-log" class="run-log"></ol>
       </section>
       <noscript><p class="notice">请启用 JavaScript 后使用运动数据同步。</p></noscript>

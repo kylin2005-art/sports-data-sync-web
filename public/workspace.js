@@ -444,10 +444,13 @@ function startRun(input) {
 function renderJobs() {
   byId('job-list').replaceChildren(...model.jobs.map(job => {
     const path = `${label(job.source)} → ${job.targets.map(label).join('、')}`;
-    const timing = job.interval ? `每 ${job.interval} 分钟 · ${connected(job.source) && job.targets.every(targetReady) ? `下次 ${formatTime(job.nextRun)}` : '等待账号连接'}` : '仅手动';
+    const missing = [job.source, ...job.targets].filter(id => !targetReady(id));
+    const timing = missing.length ? `等待连接 ${missing.map(label).join('、')}`
+      : job.interval ? `每 ${job.interval} 分钟 · 下次 ${formatTime(job.nextRun)}` : '仅手动';
     const scope = job.mode === 'all' ? (job.historyScannedAt ? '增量同步' : '待首次全量') : `${job.limit} 条 · 跳过 ${job.skip} 条`;
     return recordRow(job.name, `${path} · ${scope}${job.activityType === 'cycling' ? ' · 仅骑行' : ''} · ${timing}`, [
-      button('运行', () => startRun({ jobId: job.id })), button('编辑', () => editJob(job), 'quiet'),
+      missing.length ? link('连接账号', '#accounts', 'quiet') : button('运行', () => startRun({ jobId: job.id })),
+      button('编辑', () => editJob(job), 'quiet'),
       button('移除', () => perform(async () => {
         if (!confirm(`移除任务“${job.name}”？`)) return;
         await api('/api/jobs/delete', { id: job.id });
@@ -576,13 +579,37 @@ function renderHistory() {
   if (!model.history.length) byId('history').append(element('p', 'empty', '同步结果会按活动和目标保存在这里。'));
 }
 
+function renderRunHelp(run) {
+  const issue = run.issue;
+  const stages = { list: '读取活动列表', download: '下载原始文件', upload: '准备或上传文件', confirm: '回查目标记录', storage: '保存到工作台', sync: '执行同步' };
+  const parts = [];
+  if (issue) {
+    const where = [issue.platform && label(issue.platform), stages[issue.stage]].filter(Boolean).join(' · ');
+    parts.push(`最近故障 · ${where}。${issue.message}`);
+    if (issue.status === 401) parts.push('请重新连接该平台，再运行任务。');
+    else if (issue.status === 403) parts.push('请检查该平台的账号权限，或在官网完成安全验证。');
+    else if (issue.status === 429) parts.push('平台限制请求频率。请稍后再试，避免连续点击重跑。');
+    else if (issue.stage === 'download' && issue.status === 406) parts.push('请到来源平台试下载一条原始 FIT，确认能下载后再继续批量同步。');
+  }
+  if (run.unconfirmed > 0) parts.push('有记录仍待核对。请先在目标平台确认是否已收到，再决定是否允许重传。');
+  const help = byId('run-help');
+  help.hidden = !parts.length;
+  const guidance = byId('run-guidance');
+  const text = parts.join(' ');
+  if (guidance.textContent !== text) guidance.textContent = text;
+  byId('run-help-accounts').hidden = ![401, 403].includes(issue?.status);
+  byId('run-help-records').hidden = !(run.unconfirmed > 0);
+  byId('run-help-actions').hidden = byId('run-help-accounts').hidden && byId('run-help-records').hidden;
+}
+
 function renderRun() {
   const run = model.run;
   byId('run-panel').hidden = !run;
   if (run) {
-    const status = { running: '运行中', finished: '已结束', stopped: '已停止', failed: '任务失败' }[run.status];
+    const status = { running: '运行中', finished: run.failed ? '已结束，有失败' : '已结束', stopped: '已停止', failed: '任务失败' }[run.status];
     const coverage = Number.isSafeInteger(run.scanned) ? ` · 扫描 ${run.scanned} 条${run.activityType === 'cycling' ? ` · 骑行 ${run.matched} 条 · 类型不明 ${run.unclassified} 条` : ''}` : '';
     byId('run-summary').textContent = `${run.name} · ${status}${coverage} · 确认 ${run.confirmed} · 跳过 ${run.skipped} · 待核对 ${run.unconfirmed}${run.guided ? ` · 待手动导入 ${run.guided}` : ''} · 失败 ${run.failed}`;
+    renderRunHelp(run);
     const log = byId('run-log');
     const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 15;
     log.replaceChildren(...run.logs.map(item => {
@@ -616,7 +643,8 @@ async function refresh(force = false) {
   if (model.viewer) byId('workspace-footer-label').textContent = model.viewer.personal
     ? '运动数据同步 · 个人工作区' : '运动数据同步 · 邀请制工作区';
   const update = key => force || JSON.stringify(state[key]) !== JSON.stringify(model[key]);
-  if (update('platforms')) {
+  const platformsChanged = update('platforms');
+  if (platformsChanged) {
     const initial = !model.platforms.length;
     model.platforms = state.platforms;
     if (initial && !garminAvailable()) {
@@ -628,7 +656,7 @@ async function refresh(force = false) {
     renderAccounts();
     if (initial) editJob();
   }
-  if (update('jobs')) { model.jobs = state.jobs; renderJobs(); }
+  if (platformsChanged || update('jobs')) { model.jobs = state.jobs; renderJobs(); }
   if (update('files')) {
     model.files = state.files;
     renderFiles();

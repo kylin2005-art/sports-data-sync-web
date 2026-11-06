@@ -486,7 +486,42 @@ test('two separate original-file HTTP 406 responses stop the batch before the ne
   assert.deepEqual(seen, ['123', '124']);
   assert.equal(state.run.failed, 2);
   assert.equal(state.run.status, 'stopped');
+  assert.deepEqual(state.run.issue, { stage: 'download', platform: 'cn', status: 406, message: '原始文件下载：HTTP 406' });
   assert.equal(state.files.length, 0);
+});
+
+test('a rate-limited history page records its source and keeps the first scan incomplete until a retry', async t => {
+  const store = new SyncStore();
+  let limited = true;
+  const downloads = [];
+  const workspace = fixture(store, {
+    activities: async start => {
+      if (!start) return { activities: [ride], nextStart: 1 };
+      if (limited) throw failure(429, '来源限流');
+      return { activities: [{ ...ride, id: '124' }], nextStart: null };
+    },
+    download: async (_region, id) => {
+      downloads.push(id);
+      return { data: Buffer.concat([data, Buffer.from(id)]), fileName: `${id}.fit` };
+    },
+  }).workspace();
+  t.after(() => workspace.close());
+  workspace.setGarmin('cn', { accountKey: 'test-cn' });
+  const job = workspace.saveJob({ name: '首次全量', source: 'cn', targets: ['local'], mode: 'all', interval: 0 });
+  workspace.start({ jobId: job.id });
+  const failed = await finish(() => workspace.state());
+  assert.equal(failed.run.status, 'failed');
+  assert.equal(failed.run.confirmed, 1);
+  assert.equal(failed.jobs[0].historyScannedAt, null);
+  assert.deepEqual(store.lastRun().issue, { stage: 'list', platform: 'cn', status: 429, message: '来源限流' });
+
+  limited = false;
+  workspace.start({ jobId: job.id });
+  const retried = await finish(() => workspace.state());
+  assert.equal(retried.run.skipped, 1);
+  assert.equal(retried.run.confirmed, 1);
+  assert.ok(retried.jobs[0].historyScannedAt);
+  assert.deepEqual(downloads, ['123', '124']);
 });
 
 test('a confirmed original file is not uploaded again from the local library or by releasing the receipt', async t => {

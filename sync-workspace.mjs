@@ -460,7 +460,9 @@ export class SyncWorkspace {
       logs: [] };
     this.#pending = this.#execute(route, selected, job, verification).catch(() => {
       this.#run.status = 'failed';
-      this.#log('本机存储写入失败。请检查运行记录和目标平台后再试。', 'error');
+      const message = '本机存储写入失败。请检查运行记录和目标平台后再试。';
+      this.#recordIssue(new WorkspaceError(503, message), 'storage');
+      this.#log(message, 'error');
     }).finally(() => { this.#pending = null; });
     return this.#run;
   }
@@ -489,12 +491,18 @@ export class SyncWorkspace {
     if (this.#run.logs.length > 400) this.#run.logs.shift();
   }
 
+  #recordIssue(error, stage, platform) {
+    this.#run.issue = { stage, platform, status: error?.upstreamStatus ?? error?.status, message: messageOf(error) };
+  }
+
   async #selectForJob(job) {
     const items = new Map();
     let start = 0;
     const need = job.skip + job.limit;
     while (items.size < need && start !== null && !this.#run.stopRequested) {
-      const page = await this.list({ source: job.source, start }, false);
+      let page;
+      try { page = await this.list({ source: job.source, start }, false); }
+      catch (error) { this.#recordIssue(error, 'list', job.source); throw error; }
       for (const activity of page.activities) items.set(activity.id, activity);
       if (page.nextStart > Math.max(need + 200, 400)) {
         this.#log('已达到本轮分页上限，先处理已读取的记录。');
@@ -511,16 +519,23 @@ export class SyncWorkspace {
     const cursors = new Set();
     for (let position = native ? '' : 0; position !== null && !this.#run.stopRequested;) {
       let page;
-      if (native) {
-        this.#require(source);
-        try { page = await this.sources.historyPage(source, this.#credentials.get(source), position || null); }
-        catch (error) { await this.#invalidate(error, source); throw error; }
-        if (!Array.isArray(page?.activities) || page.activities.some(item => !safeId(item?.id)) ||
-            (page.nextCursor !== null && (!safeId(page.nextCursor) || cursors.has(page.nextCursor)))) {
-          throw new WorkspaceError(502, '来源返回的历史列表或游标不正确。');
+      try {
+        if (native) {
+          this.#require(source);
+          try { page = await this.sources.historyPage(source, this.#credentials.get(source), position || null); }
+          catch (error) { await this.#invalidate(error, source); throw error; }
+          if (!Array.isArray(page?.activities) || page.activities.some(item => !safeId(item?.id)) ||
+              (page.nextCursor !== null && (!safeId(page.nextCursor) || cursors.has(page.nextCursor)))) {
+            throw new WorkspaceError(502, '来源返回的历史列表或游标不正确。');
+          }
+          cursors.add(page.nextCursor);
+        } else {
+          page = await this.list({ source, start: position }, false);
         }
-        cursors.add(page.nextCursor);
-      } else page = await this.list({ source, start: position }, false);
+      } catch (error) {
+        this.#recordIssue(error, 'list', source);
+        throw error;
+      }
       for (const activity of page.activities) {
         if (seen.has(activity.id)) continue;
         seen.add(activity.id);
@@ -645,6 +660,7 @@ export class SyncWorkspace {
         status: uncertain ? 'unconfirmed' : 'failed', message: messageOf(error) });
       if (uncertain) {
         this.#run.unconfirmed++;
+        this.#recordIssue(error, previous?.activityId ? 'confirm' : 'upload', target);
         this.#log(`${activity.name} → ${this.platforms.get(target).name}：${messageOf(error)}`, 'error');
         await this.#invalidate(error, target);
         if ([401, 429].includes(error.status)) this.#run.stopRequested = true;
@@ -678,7 +694,9 @@ export class SyncWorkspace {
           if (verification && (entry.key !== verification.receiptId || entry.old?.status !== 'confirmed' ||
               entry.old.activityId !== verification.targetActivityId)) {
             this.#run.failed++;
-            throw new WorkspaceError(409, '当前账号下没有与预期国际区活动 ID 一致的已确认回执。验收已停止。');
+            const error = new WorkspaceError(409, '当前账号下没有与预期国际区活动 ID 一致的已确认回执。验收已停止。');
+            this.#recordIssue(error, 'confirm', target);
+            throw error;
           }
           try {
             if (!entry.blocked && !entry.reverse && !durable.has(entry.old?.status)) {
@@ -704,6 +722,8 @@ export class SyncWorkspace {
           } catch (error) {
             const pending = entry.old?.activityId && entry.old.status !== 'confirmed';
             this.#run[pending ? 'unconfirmed' : 'failed']++;
+            if (error === downloadError) this.#recordIssue(error, 'download', route.source);
+            else this.#recordIssue(error, pending ? 'confirm' : 'upload', target);
             this.#log(`${activity.name} → ${this.platforms.get(target).name}：${messageOf(error)}`, 'error');
             if (consecutiveDownload406s >= 2 && error === downloadError) {
               this.#log('来源连续两次拒绝原始文件下载（HTTP 406），已停止本批任务。', 'error');
@@ -719,6 +739,7 @@ export class SyncWorkspace {
       this.#run.status = this.#run.stopRequested ? 'stopped' : 'finished';
     } catch (error) {
       this.#run.status = 'failed';
+      if (!this.#run.issue) this.#recordIssue(error, 'sync');
       this.#log(messageOf(error), 'error');
     } finally {
       this.#run.finished = new Date().toISOString();

@@ -386,6 +386,9 @@ body:has(.workspace) #credential-dialog {
   color: var(--panel-accent-dark);
 }
 
+.workspace #run-help { margin-top: 12px; overflow-wrap: anywhere; }
+.workspace #run-guidance { margin: 0; }
+
 .workspace .run-log {
   max-height: 260px;
   overflow: auto;
