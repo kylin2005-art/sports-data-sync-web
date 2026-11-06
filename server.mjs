@@ -143,6 +143,7 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
     ['/api/jobs/delete', input => workspace.deleteJob(input)],
     ['/api/workouts/list', input => workspace.listWorkouts(input)],
     ['/api/workouts/publish', input => workspace.publishWorkout(input)],
+    ['/api/history/confirm', input => workspace.confirmReceipt(input)],
     ['/api/history/release', input => workspace.release(input)],
     ['/api/tracks', async input => (await import('./tracks.mjs')).processTracks(input, workspace)],
   ]);

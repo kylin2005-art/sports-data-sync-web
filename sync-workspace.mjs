@@ -6,7 +6,8 @@ const regions = new Set(['cn', 'com']);
 const pageSize = 20;
 const maxActivities = 50;
 const safeId = id => typeof id === 'string' && /^[\w.:-]{1,160}$/.test(id);
-const durable = new Set(['sending', 'accepted', 'unconfirmed', 'confirmed', 'duplicate', 'guided']);
+const awaitingConfirmation = new Set(['sending', 'accepted', 'unconfirmed']);
+const durable = new Set([...awaitingConfirmation, 'confirmed', 'duplicate', 'guided']);
 const sportKey = value => typeof value === 'string' ? value.trim().toLowerCase().replace(/[ _-]+/g, '') : '';
 const cyclingSports = new Set([
   'cycling', 'biking', 'road_biking', 'mountain_biking', 'downhill_biking', 'indoor_cycling',
@@ -424,11 +425,39 @@ export class SyncWorkspace {
 
   release({ id }) {
     const entry = typeof id === 'string' && this.store.receipt(id);
-    if (!entry || !['sending', 'accepted', 'unconfirmed'].includes(entry.status)) {
+    if (!entry || !awaitingConfirmation.has(entry.status)) {
       throw new WorkspaceError(409, '只有结果待核对的记录可以手动允许重试。');
     }
     this.store.saveReceipt(id, { ...entry, previousStatus: entry.status, status: 'released', message: '用户核对目标后允许再次发送。' });
     return { message: '已允许下次重传。' };
+  }
+
+  async confirmReceipt({ id }) {
+    if (typeof id !== 'string' || !/^[a-f0-9]{64}$/.test(id)) throw new WorkspaceError(400, '回执编号无效。');
+    const entry = this.store.receipt(id);
+    if (!entry) throw new WorkspaceError(404, '找不到该同步回执。');
+    const { target, source, sourceId, targetScope, status } = entry;
+    if (!regions.has(target) || !/^[1-9]\d{0,19}$/.test(entry.activityId) ||
+        (!awaitingConfirmation.has(status) && status !== 'confirmed')) {
+      throw new WorkspaceError(409, '只有带目标活动 ID 的佳明回执可以回查。');
+    }
+    this.#require(target);
+    const targetAccount = this.#scope(target);
+    const matches = targetScope ? targetScope === digest('receipt-target', target, targetAccount)
+      : this.#ready(source) && id === digest(source, this.#scope(source), sourceId, target, targetAccount);
+    if (!this.#stable(target) || !matches) {
+      throw new WorkspaceError(409, `请连接生成这条回执时使用的${this.platforms.get(target).name}账号，再回查。`);
+    }
+    if (status === 'confirmed') return { message: '这条活动已经确认。' };
+    return this.#confirmReceipt(id, entry);
+  }
+
+  async #confirmReceipt(id, entry) {
+    const verified = await this.garmin.confirm(entry.target, entry.activityId);
+    if (verified?.activityId !== entry.activityId) throw new WorkspaceError(502, '目标活动 ID 不匹配，回执仍待核对。');
+    const message = '已通过活动编号重新核对。';
+    this.store.saveReceipt(id, { ...entry, ...verified, status: 'confirmed', message });
+    return { message };
   }
 
   start(input) { return this.#start(input); }
@@ -571,13 +600,12 @@ export class SyncWorkspace {
       return 'skipped';
     }
     if (old && durable.has(old.status)) {
-      if (regions.has(target) && old.activityId && ['sending', 'accepted', 'unconfirmed'].includes(old.status)) {
-        const verified = await this.garmin.confirm(target, old.activityId);
-        this.store.saveReceipt(key, { ...old, ...verified, status: 'confirmed', message: '已通过活动编号重新核对。' });
-        this.#log(`${activity.name} → ${this.platforms.get(target).name}：已通过活动编号重新核对。`, 'success');
+      const pending = awaitingConfirmation.has(old.status);
+      if (regions.has(target) && old.activityId && pending) {
+        const { message } = await this.#confirmReceipt(key, old);
+        this.#log(`${activity.name} → ${this.platforms.get(target).name}：${message}`, 'success');
         return 'confirmed';
       }
-      const pending = ['sending', 'accepted', 'unconfirmed'].includes(old.status);
       this.#log(`${activity.name} → ${this.platforms.get(target).name}：${pending
         ? '上次上传结果待核对，已拦截重传' : '已有记录，跳过'}。`, pending ? 'pending' : 'info');
       return 'skipped';

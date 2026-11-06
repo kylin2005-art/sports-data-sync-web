@@ -172,6 +172,57 @@ test('a known pending Garmin ID survives a restart and is only read back', async
   }
 });
 
+test('history readback checks the original target account and confirms only the recorded Garmin ID', async t => {
+  const store = new SyncStore();
+  let reads = 0, uploads = 0, downloads = 0;
+  let targetRecord = { ...imported, activityId: '457' };
+  const { garmin, workspace } = fixture(store, {
+    download: async () => { downloads++; return { data, fileName: 'ride.fit' }; },
+    upload: async (_region, _file, callbacks) => {
+      uploads++;
+      await callbacks.beforeUpload();
+      await callbacks.onImported(imported);
+      throw failure(502, '目标尚未读回');
+    },
+    confirm: async (region, id) => {
+      reads++;
+      assert.equal(region, 'com');
+      assert.equal(id, '456');
+      return targetRecord;
+    },
+  });
+  const server = createServer(garmin, workspace);
+  const service = server.syncWorkspace;
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    await new Promise(resolve => server.close(resolve));
+    await service.close();
+  });
+  service.setGarmin('cn', { accountKey: 'test-cn' });
+  service.setGarmin('com', { accountKey: 'original-target' });
+  await service.list({ source: 'cn' });
+  service.start({ source: 'cn', targets: ['com'], ids: [ride.id] });
+  const { history: [pending] } = await finish(() => service.state());
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const confirm = () => fetch(`${origin}/api/history/confirm`, { method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: pending.id }) });
+
+  service.setGarmin('cn', null);
+  service.setGarmin('com', { accountKey: 'another-target' });
+  assert.equal((await confirm()).status, 409);
+  assert.equal(reads, 0);
+  service.setGarmin('com', { accountKey: 'original-target' });
+  assert.equal((await confirm()).status, 502);
+  assert.equal(store.receipt(pending.id).status, 'unconfirmed');
+
+  targetRecord = imported;
+  assert.equal((await confirm()).status, 200);
+  assert.equal(store.receipt(pending.id).status, 'confirmed');
+  assert.equal(store.receipt(pending.id).activityId, '456');
+  assert.equal((await confirm()).status, 200);
+  assert.deepEqual({ reads, uploads, downloads }, { reads: 2, uploads: 1, downloads: 1 });
+});
+
 test('guarded Garmin replay uses the exact confirmed receipt for the current accounts', async t => {
   let downloads = 0;
   let uploads = 0;

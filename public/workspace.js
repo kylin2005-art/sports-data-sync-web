@@ -567,6 +567,13 @@ function renderHistory() {
     if (entry.fileId) actions.push(fileLink(entry.fileId, '原文件'));
     if (typeof entry.url === 'string' && entry.url.startsWith('https://')) actions.push(link('目标记录 ↗', entry.url, 'quiet'));
     if (['sending', 'accepted', 'unconfirmed'].includes(entry.status)) {
+      if (entry.activityId && ['cn', 'com'].includes(entry.target)) {
+        actions.push(button('回查目标记录', () => perform(async () => {
+          const result = await api('/api/history/confirm', { id: entry.id });
+          await refresh();
+          notice(result.message, 'success');
+        })));
+      }
       actions.push(button('核对后允许重试', () => perform(async () => {
         if (!confirm('请先在目标平台核对。确定要允许这条记录再次上传吗？')) return;
         await api('/api/history/release', { id: entry.id });
