@@ -159,8 +159,14 @@ function renderSelect(select, selected) {
   select.value = options.some(item => item.id === selected) ? selected : (options[0]?.id || '');
 }
 
-function renderChoices(container, source, selected, showState) {
-  container.replaceChildren(...model.platforms.filter(item => item.target && item.id !== source && usablePlatform(item)).map(item => {
+function renderChoices(container, source, selected, connectedOnly) {
+  const targets = model.platforms.filter(item => item.target && item.id !== source && usablePlatform(item) &&
+    (!connectedOnly || connected(item.id)));
+  if (connectedOnly) {
+    const available = new Set(targets.map(item => item.id));
+    for (const id of selected) if (!available.has(id)) selected.delete(id);
+  }
+  container.replaceChildren(...targets.map(item => {
     const choice = element('label', 'choice');
     const input = element('input');
     input.type = 'checkbox';
@@ -173,10 +179,11 @@ function renderChoices(container, source, selected, showState) {
         renderControls();
       }
     });
-    const text = item.guided ? `${item.name} · 手动导入` : showState && !connected(item.id) ? `${item.name} · 待连接` : item.name;
+    const text = item.guided ? `${item.name} · 手动导入` : item.name;
     choice.append(input, document.createTextNode(text));
     return choice;
   }));
+  if (connectedOnly && !targets.length) container.append(element('p', 'muted', '暂无可用目标，请先到平台账号连接。'));
 }
 
 function renderControls() {
@@ -191,6 +198,7 @@ function renderControls() {
   byId('download-test').disabled = busy || model.selected.size !== 1 || !connected(model.source);
   byId('run').disabled = busy || !connected(model.source) || model.selected.size === 0 || model.targets.size === 0 ||
     [...model.targets].some(id => !targetReady(id));
+  document.querySelectorAll('[data-job-sync]').forEach(node => { node.disabled = busy || node.dataset.jobSync === 'blocked'; });
   byId('setup-full-ride').disabled = busy || !platform(model.source)?.source;
   byId('selected-count').textContent = `已选 ${model.selected.size} 条`;
   byId('source-status').textContent = connected(model.source) ? connectionNames[platform(model.source).state] : '先到平台账号连接此来源。';
@@ -444,12 +452,18 @@ function startRun(input) {
 function renderJobs() {
   byId('job-list').replaceChildren(...model.jobs.map(job => {
     const path = `${label(job.source)} → ${job.targets.map(label).join('、')}`;
-    const missing = [job.source, ...job.targets].filter(id => !targetReady(id));
+    const sourceReady = connected(job.source);
+    const missing = job.targets.filter(id => !targetReady(id));
+    const canSync = sourceReady && missing.length < job.targets.length;
+    if (!sourceReady) missing.unshift(job.source);
     const timing = missing.length ? `等待连接 ${missing.map(label).join('、')}`
       : job.interval ? `每 ${job.interval} 分钟 · 下次 ${formatTime(job.nextRun)}` : '仅手动';
     const scope = job.mode === 'all' ? (job.historyScannedAt ? '增量同步' : '待首次全量') : `${job.limit} 条 · 跳过 ${job.skip} 条`;
+    const connectedOnly = canSync && missing.length > 0;
+    const sync = button(connectedOnly ? '同步已连接目标' : '立即同步', () => startRun({ jobId: job.id, connectedOnly }), 'primary');
+    sync.dataset.jobSync = canSync ? 'ready' : 'blocked';
     return recordRow(job.name, `${path} · ${scope}${job.activityType === 'cycling' ? ' · 仅骑行' : ''} · ${timing}`, [
-      missing.length ? link('连接账号', '#accounts', 'quiet') : button('运行', () => startRun({ jobId: job.id })),
+      sync, ...(missing.length ? [link('连接账号', '#accounts', 'quiet')] : []),
       button('编辑', () => editJob(job), 'quiet'),
       button('移除', () => perform(async () => {
         if (!confirm(`移除任务“${job.name}”？`)) return;

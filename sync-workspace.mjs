@@ -269,6 +269,10 @@ export class SyncWorkspace {
     return id === 'local' || this.#credentials.has(id) || this.#garminAccounts.has(id);
   }
 
+  #targetReady(id) {
+    return this.platforms.get(id)?.guided || this.#ready(id);
+  }
+
   #scope(id) {
     return regions.has(id) ? this.#garminAccounts.get(id) : id === 'local' ? 'local' : digest(this.#credentials.get(id));
   }
@@ -474,7 +478,15 @@ export class SyncWorkspace {
     if (this.busy) throw new WorkspaceError(409, '有同步任务正在运行。');
     const job = input.jobId && this.store.jobs().find(item => item.id === input.jobId);
     if (input.jobId && !job) throw new WorkspaceError(404, '未找到该同步任务。');
-    const route = this.#route(job || input, true);
+    const connectedOnly = job && input.connectedOnly === true;
+    const route = this.#route(job || input, !connectedOnly);
+    let omittedTargets = [];
+    if (connectedOnly) {
+      this.#require(route.source);
+      omittedTargets = route.targets.filter(target => !this.#targetReady(target));
+      route.targets = route.targets.filter(target => !omittedTargets.includes(target));
+      if (!route.targets.length) throw new WorkspaceError(409, '请先连接至少一个同步目标。');
+    }
     let selected;
     if (!job) {
       const { ids } = input;
@@ -485,6 +497,7 @@ export class SyncWorkspace {
     }
     this.#run = { id: randomUUID(), jobId: job?.id || null, name: job?.name || (verification ? '重启去重验收' : '手动同步'), status: 'running',
       started: new Date().toISOString(), stopRequested: false, confirmed: 0, skipped: 0, failed: 0, unconfirmed: 0, guided: 0,
+      ...(omittedTargets.length && { omittedTargets }),
       ...(job?.mode === 'all' && { activityType: job.activityType ?? 'all', scanned: 0, matched: 0, unclassified: 0 }),
       logs: [] };
     this.#pending = this.#execute(route, selected, job, verification).catch(() => {
@@ -703,6 +716,9 @@ export class SyncWorkspace {
   async #execute(route, selected, job, verification) {
     const fullHistory = job?.mode === 'all';
     try {
+      if (this.#run.omittedTargets) {
+        this.#log(`本次只同步已连接目标。未连接：${this.#run.omittedTargets.map(target => this.platforms.get(target).name).join('、')}。`);
+      }
       const items = fullHistory ? this.#scanHistory(route.source) : selected || await this.#selectForJob(job);
       this.#log(fullHistory ? (job.historyScannedAt ? '增量同步：检查来源列表，已有回执的活动不会重传。' : '首次同步：逐页读取全部历史活动，已有回执的活动不会重传。')
         : `读取到 ${items.length} 条待处理活动。`);
@@ -779,7 +795,7 @@ export class SyncWorkspace {
         const unknown = activityType === 'cycling' && unclassified ? `，跳过运动类型未识别的 ${unclassified} 条` : '';
         this.#log(`历史扫描${outcome}：已检查 ${scanned} 条，符合范围 ${matched} 条${unknown}。`);
       }
-      if (job) {
+      if (job && !this.#run.omittedTargets) {
         const historyScannedAt = job.mode === 'all' && !job.historyScannedAt && this.#run.status === 'finished' ? this.#run.finished : job.historyScannedAt;
         this.store.saveJob({ ...job, ...(job.mode === 'all' && { historyScannedAt }), lastRun: this.#run.finished,
           nextRun: job.interval ? Date.now() + job.interval * 60_000 : null });
@@ -792,7 +808,7 @@ export class SyncWorkspace {
     this.#timer = setInterval(() => {
       if (this.busy || this.isBusy()) return;
       const job = this.store.jobs().find(item => item.nextRun && item.nextRun <= Date.now() &&
-        this.#ready(item.source) && item.targets.every(id => this.platforms.get(id)?.guided || this.#ready(id)));
+        this.#ready(item.source) && item.targets.every(id => this.#targetReady(id)));
       if (job) this.start({ jobId: job.id });
     }, 15_000);
     this.#timer.unref();

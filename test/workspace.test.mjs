@@ -575,6 +575,35 @@ test('a rate-limited history page records its source and keeps the first scan in
   assert.deepEqual(downloads, ['123', '124']);
 });
 
+test('manually syncing connected targets preserves the saved route and lets a later full run catch up', async t => {
+  const store = new SyncStore();
+  let uploads = 0;
+  const workspace = fixture(store, { upload: async (_region, _file, callbacks) => {
+    await callbacks.beforeUpload();
+    uploads++;
+    return imported;
+  } }).workspace();
+  t.after(() => workspace.close());
+  const job = workspace.saveJob({ name: '全量同步', source: 'cn', targets: ['com', 'local'], mode: 'all', interval: 15 });
+  assert.throws(() => workspace.start({ jobId: job.id, connectedOnly: true }), /请先连接佳明中国/);
+  workspace.setGarmin('cn', { accountKey: 'test-cn' });
+  assert.throws(() => workspace.start({ jobId: job.id }), /请先连接佳明国际/);
+  workspace.start({ jobId: job.id, connectedOnly: true });
+  const partial = await finish(() => workspace.state());
+  assert.equal(partial.run.confirmed, 1);
+  assert.deepEqual(partial.run.omittedTargets, ['com']);
+  assert.deepEqual(partial.history.map(receipt => receipt.target), ['local']);
+  assert.deepEqual(partial.jobs[0], job);
+
+  workspace.setGarmin('com', { accountKey: 'test-com' });
+  workspace.start({ jobId: job.id });
+  const full = await finish(() => workspace.state());
+  assert.equal(full.run.skipped, 1);
+  assert.equal(full.run.confirmed, 1);
+  assert.equal(uploads, 1);
+  assert.ok(full.jobs[0].historyScannedAt);
+});
+
 test('a confirmed original file is not uploaded again from the local library or by releasing the receipt', async t => {
   let posts = 0;
   const store = new SyncStore();
