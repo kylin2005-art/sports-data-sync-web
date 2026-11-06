@@ -7,6 +7,7 @@ const TERRAIN_ORIGIN = 'https://tiles.mapterhorn.com';
 const STREET_STYLE = `${STREET_ORIGIN}/styles/liberty`;
 const TERRAIN_SOURCE = 'ride-dem';
 const ROUTE_SOURCE = 'ride-route';
+const GRID_SOURCE = 'ride-exploration-grid';
 const ROUTE_COLOR = '#1768d6';
 const MISSING_COLOR = '#737f92';
 const LOAD_TIMEOUT = 14_000;
@@ -77,7 +78,37 @@ export function rideMapLegend(segments, mode) {
   return legend;
 }
 
-export function createRideMap(container, segments, { mode = 'route', terrain = true, onStatus = () => {} } = {}) {
+function gridCorner(x, y, size) {
+  const scale = size / 6378137;
+  return [Math.max(-180, Math.min(180, x * scale * 180 / Math.PI)),
+    Math.atan(Math.sinh(y * scale)) * 180 / Math.PI];
+}
+
+function gridData(grid) {
+  const features = [];
+  for (const [cells, fresh] of [[grid.previousCells, false], [grid.newCells, true]]) {
+    for (const [x, y] of cells) {
+      const [west, south] = gridCorner(x, y, grid.cellMeters);
+      const [east, north] = gridCorner(x + 1, y + 1, grid.cellMeters);
+      features.push({ type: 'Feature', properties: { fresh }, geometry: { type: 'Polygon',
+        coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]] } });
+    }
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+function gridBounds(cells, size) {
+  const bounds = [[Infinity, Infinity], [-Infinity, -Infinity]];
+  for (const [x, y] of cells) {
+    bounds[0][0] = Math.min(bounds[0][0], x);
+    bounds[0][1] = Math.min(bounds[0][1], y);
+    bounds[1][0] = Math.max(bounds[1][0], x + 1);
+    bounds[1][1] = Math.max(bounds[1][1], y + 1);
+  }
+  return bounds.map(([x, y]) => gridCorner(x, y, size));
+}
+
+export function createRideMap(container, segments, { mode = 'route', terrain = true, grid, basemap = true, onStatus = () => {} } = {}) {
   const edges = readEdges(segments);
   let map;
   let streetTimer;
@@ -100,7 +131,9 @@ export function createRideMap(container, segments, { mode = 'route', terrain = t
 
   function reportProgress() {
     if (contextLost) return;
-    if (terrainFailed && streetDelayed) {
+    if (!basemap && styleReady) {
+      report('warning', '正在显示格子和轨迹，街道底图未加载。');
+    } else if (terrainFailed && streetDelayed) {
       report('warning', '街道底图和地形暂未加载，仍可查看骑行路线。');
     } else if (terrainFailed) {
       report('warning', '地形暂不可用，已切换为二维地图。');
@@ -162,7 +195,9 @@ export function createRideMap(container, segments, { mode = 'route', terrain = t
   }
 
   const controls = { setMode, setTerrain, destroy };
-  if (!edges.length) {
+  if (grid) controls.fitExploration = () => map?.fitBounds(gridBounds(
+    [...grid.currentCells, ...grid.previousCells], grid.cellMeters), { padding: 40, maxZoom: 15 });
+  if (!edges.length && !grid) {
     report('error', '这个文件没有可绘制的地图路线。');
     return controls;
   }
@@ -179,10 +214,13 @@ export function createRideMap(container, segments, { mode = 'route', terrain = t
   try {
     setWorkerUrl(workerUrl);
     map = new Map({
-      container, style: STREET_STYLE, bounds, fitBoundsOptions: { padding: 40, maxZoom: 15 },
+      container, style: basemap ? STREET_STYLE : { version: 8, sources: {}, layers: [
+        { id: 'background', type: 'background', paint: { 'background-color': '#eef3f8' } },
+      ] },
+      bounds: grid ? gridBounds(grid.currentCells, grid.cellMeters) : bounds, fitBoundsOptions: { padding: 40, maxZoom: 15 },
       maxPitch: 0, cooperativeGestures: true, attributionControl: { compact: false },
       locale: {
-        'Map.Title': '骑行路线地图',
+        'Map.Title': grid ? '骑行探索地图' : '骑行路线地图',
         'NavigationControl.ZoomIn': '放大地图',
         'NavigationControl.ZoomOut': '缩小地图',
         'NavigationControl.ResetBearing': '拖动可旋转地图，点击回到正北',
@@ -238,6 +276,14 @@ export function createRideMap(container, segments, { mode = 'route', terrain = t
   });
   map.once('style.load', () => {
     try {
+      if (grid) {
+        map.addSource(GRID_SOURCE, { type: 'geojson', data: gridData(grid) });
+        const color = ['case', ['get', 'fresh'], '#087762', '#315eaa'];
+        map.addLayer({ id: GRID_SOURCE, source: GRID_SOURCE, type: 'fill',
+          paint: { 'fill-color': color, 'fill-opacity': ['case', ['get', 'fresh'], 0.64, 0.36] } });
+        map.addLayer({ id: 'ride-exploration-outline', source: GRID_SOURCE, type: 'line',
+          paint: { 'line-color': color, 'line-width': 1, 'line-opacity': 0.85 } });
+      }
       map.addSource(ROUTE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: edges } });
       const layout = { 'line-join': 'round', 'line-cap': 'round' };
       map.addLayer({ id: 'ride-route-halo', source: ROUTE_SOURCE, type: 'line', layout,

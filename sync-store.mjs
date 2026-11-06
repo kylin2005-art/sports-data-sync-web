@@ -137,6 +137,10 @@ export class SyncStore {
       .all(limit, start).map(row => JSON.parse(row.payload));
   }
 
+  fileIdsInArchiveOrder() {
+    return this.db.prepare('SELECT id FROM files ORDER BY rowid').all().map(row => row.id);
+  }
+
   trackLibraryPage(start, limit) {
     const { total } = this.db.prepare('SELECT COUNT(*) AS total FROM files').get();
     const files = this.db.prepare(`SELECT payload FROM files

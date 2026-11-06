@@ -459,9 +459,13 @@ body:has(.workspace) #credential-dialog {
 .workspace .ride-map-legend[hidden] { display: none; }
 .workspace .ride-map-legend li { display: inline-flex; align-items: center; gap: 6px; }
 .workspace .ride-map-legend .swatch { display: inline-block; width: 16px; height: 5px; border-radius: 3px; }
-.workspace #ride-map-status:not(:empty) { margin: 9px 0; }
-.workspace #ride-map-canvas { height: clamp(300px, 56vh, 560px); width: 100%; margin-top: 10px; overflow: hidden; border: 1px solid var(--panel-line); border-radius: 10px; background: #edf2f7; }
+.workspace :is(#ride-map-status, #ride-exploration-status):not(:empty) { margin: 9px 0; }
+.workspace :is(#ride-map-canvas, #exploration-map-canvas) { height: clamp(300px, 56vh, 560px); width: 100%; margin-top: 10px; overflow: hidden; border: 1px solid var(--panel-line); border-radius: 10px; background: #edf2f7; }
 .workspace #ride-map-canvas[hidden] { display: none; }
+.workspace .exploration-new { background: #087762; }
+.workspace .exploration-history { background: #315eaa; }
+.workspace .ride-metrics.exploration-metrics { grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); }
+.workspace #ride-exploration-results > .muted { margin: 10px 0; }
 
 .workspace .ride-analysis > .muted,
 .workspace .ride-share > .muted { margin-top: 7px; }
@@ -516,6 +520,7 @@ body:has(#ride-terrain-dialog[open]) { overflow: hidden; }
 }
 
 .workspace #ride-card { max-width: 420px; box-shadow: 0 9px 26px #0b263b22; }
+.workspace #exploration-card { display: block; width: min(100%, 420px); height: auto; }
 
 @media (min-width: 960px) {
   .workspace .ride-studio { grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr); }

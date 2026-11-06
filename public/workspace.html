@@ -169,6 +169,40 @@
               <div id="ride-map-canvas" aria-label="可交互的骑行地图"></div>
             </div>
           </section>
+          <section class="panel ride-map-panel" aria-labelledby="ride-exploration-heading">
+            <p class="eyebrow">RIDE EXPLORATION</p>
+            <h2 id="ride-exploration-heading">骑行探索</h2>
+            <p class="muted">用已保存的 FIT / GPX 点亮格子。打开后，浏览器会向底图服务请求当前区域的地图瓦片。</p>
+            <button type="button" id="ride-exploration-toggle" class="button button-primary" aria-controls="ride-exploration" aria-expanded="false">加载探索地图</button>
+            <div id="ride-exploration" hidden>
+              <p id="ride-exploration-status" class="muted" role="status"></p>
+              <div id="ride-exploration-results" hidden>
+                <dl class="ride-metrics exploration-metrics">
+                  <div class="ride-metric"><dt>本次新增格子</dt><dd id="exploration-new"></dd></div>
+                  <div class="ride-metric"><dt>本次经过格子</dt><dd id="exploration-current"></dd></div>
+                  <div class="ride-metric"><dt>此前骑过格子</dt><dd id="exploration-history"></dd></div>
+                </dl>
+                <div id="exploration-map-view">
+                  <div class="action-row">
+                    <ul class="ride-map-legend" aria-label="探索地图图例">
+                      <li><span class="swatch exploration-new" aria-hidden="true"></span>本次新增</li>
+                      <li><span class="swatch exploration-history" aria-hidden="true"></span>此前骑过</li>
+                    </ul>
+                    <button type="button" id="exploration-fit-all" class="button button-secondary">查看全部格子</button>
+                  </div>
+                  <div id="exploration-map-canvas" aria-label="可交互的骑行探索地图"></div>
+                </div>
+                <p class="muted">按轨迹原始定位点计格。约 500 米为地图投影尺度，实际边长随纬度变化。</p>
+                <h3>探索卡</h3>
+                <p class="muted">卡片只显示格子统计，不包含路线、地点和日期。</p>
+                <div class="ride-preview"><canvas id="exploration-card" width="1080" height="1080" aria-label="骑行探索卡预览"></canvas></div>
+                <div class="action-row">
+                  <button type="button" id="exploration-download" class="button button-primary">下载探索卡 PNG</button>
+                  <button type="button" id="exploration-share" class="button button-secondary">分享探索卡</button>
+                </div>
+              </div>
+            </div>
+          </section>
           <div class="panel ride-analysis">
             <p class="eyebrow">RIDE ANALYSIS</p>
             <h2 id="ride-analysis-heading" tabindex="-1">单次骑行分析</h2>

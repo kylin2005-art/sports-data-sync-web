@@ -20,6 +20,7 @@ const workspaceAssets = new Map([
   ['/ride-card.js', ['ride-card.js', 'text/javascript; charset=utf-8']],
   ['/ride-terrain.js', ['ride-terrain.js', 'text/javascript; charset=utf-8']],
   ['/ride-image.js', ['ride-image.js', 'text/javascript; charset=utf-8']],
+  ['/ride-exploration.js', ['ride-exploration.js', 'text/javascript; charset=utf-8']],
   ['/workspace-icon.svg', ['workspace-icon.svg', 'image/svg+xml']],
   ['/ui/workspace-ui.js', ['ui/workspace-ui.js', 'text/javascript; charset=utf-8']],
   ['/ui/workspace-ui.css', ['ui/workspace-ui.css', 'text/css; charset=utf-8']],
@@ -85,6 +86,7 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
   const verified = { cn: false, com: false };
   const seen = new Set();
   const trackSummaries = new Map();
+  let exploreRide;
   let busy = false;
 
   async function invalidate(region) {
@@ -252,6 +254,12 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
       }
       if (request.method === 'GET' && path === '/api/state') return json(response, 200, verified);
       if (workspace && request.method === 'GET') {
+        const explorationId = path.match(/^\/api\/ride\/([a-f0-9]{64})\/exploration$/)?.[1];
+        if (explorationId) {
+          const { createRideExploration } = await import('./ride-exploration.mjs');
+          exploreRide ??= createRideExploration(workspace.store);
+          return json(response, 200, await exploreRide(explorationId));
+        }
         const rideId = path.match(/^\/api\/ride\/([a-f0-9]{64})$/)?.[1];
         if (rideId) return json(response, 200, await (await import('./tracks.mjs')).processRide({ id: rideId }, workspace));
         if (path === '/api/track-library') return json(response, 200, await trackLibrary(url.searchParams));

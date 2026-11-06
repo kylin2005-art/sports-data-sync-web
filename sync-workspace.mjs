@@ -37,6 +37,8 @@ const otherSports = new Set([
   'multisport', 'skiing', 'golf', 'cardio_training', '跑步', '徒步', '步行', '游泳', '力量训练',
 ].map(sportKey));
 
+export const isKnownOtherSport = value => otherSports.has(sportKey(value));
+
 const catalog = [
   ['cn', '佳明中国', true, true], ['com', '佳明国际', true, true],
   ['igpsport', 'iGPSPORT 中国', true, true], ['igpsport_int', 'iGPSPORT 国际', true, true], ['xingzhe', '行者', true, true],

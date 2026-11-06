@@ -756,6 +756,7 @@ function drawTrack(tracks) {
 function clearRide() {
   if (byId('ride-terrain-dialog').open) byId('ride-terrain-dialog').close();
   closeRideMap();
+  closeRideExploration();
   model.ride = null;
   byId('ride-studio').hidden = true;
   byId('ride-download').disabled = true;
@@ -772,6 +773,73 @@ function closeRideMap() {
   byId('ride-map-view').hidden = true;
   byId('ride-map-toggle').textContent = '加载真实地图';
   byId('ride-map-toggle').setAttribute('aria-expanded', 'false');
+}
+
+function closeRideExploration() {
+  const ride = model.ride;
+  ride?.explorationMap?.destroy();
+  if (ride) ride.explorationMap = null;
+  byId('ride-exploration').hidden = true;
+  byId('ride-exploration-results').hidden = true;
+  const toggle = byId('ride-exploration-toggle');
+  toggle.disabled = false;
+  toggle.textContent = '加载探索地图';
+  toggle.setAttribute('aria-expanded', 'false');
+}
+
+async function toggleRideExploration() {
+  const ride = model.ride;
+  if (!ride) return;
+  const view = byId('ride-exploration');
+  if (!view.hidden) return closeRideExploration();
+  const toggle = byId('ride-exploration-toggle');
+  const status = byId('ride-exploration-status');
+  const mapView = byId('exploration-map-view');
+  toggle.disabled = true;
+  toggle.setAttribute('aria-expanded', 'true');
+  toggle.textContent = '收起探索地图';
+  status.textContent = '正在计算探索格子。首次读取全部本地轨迹可能需要一些时间…';
+  view.hidden = false;
+  const active = () => model.ride === ride && !view.hidden;
+  try {
+    const [grid, { drawExplorationCard }] = await Promise.all([
+      api(`/api/ride/${encodeURIComponent(ride.id)}/exploration`), import('/ride-exploration.js'),
+    ]);
+    if (!active()) return;
+    byId('exploration-new').textContent = grid.newCells.length.toLocaleString('zh-CN');
+    byId('exploration-current').textContent = grid.currentCells.length.toLocaleString('zh-CN');
+    byId('exploration-history').textContent = grid.previousCells.length.toLocaleString('zh-CN');
+    drawExplorationCard(byId('exploration-card'), grid);
+    mapView.hidden = false;
+    byId('ride-exploration-results').hidden = false;
+
+    const { createRideMap } = await import('/ui/ride-map.js');
+    if (!active()) return;
+    const openMap = basemap => {
+      ride.explorationMap = createRideMap(byId('exploration-map-canvas'), ride.data.mapSegments, {
+        grid, terrain: false, basemap,
+        onStatus({ state, message }) {
+          if (!active()) return;
+          status.textContent = message;
+          if (state === 'error') {
+            if (basemap && message.startsWith('街道底图')) {
+              queueMicrotask(() => { if (active()) openMap(false); });
+            } else {
+              mapView.hidden = true;
+            }
+          }
+        },
+      });
+    };
+    openMap(true);
+  } catch (error) {
+    if (!active()) return;
+    mapView.hidden = true;
+    status.textContent = byId('ride-exploration-results').hidden
+      ? (error.message || '探索格子读取失败，请重试。') : '探索地图暂时无法加载，仍可保存探索卡。';
+  } finally {
+    if (active()) toggle.disabled = false;
+  }
 }
 
 function showRideMapLegend(legend, estimatedSpeed) {
@@ -1225,6 +1293,10 @@ byId('ride-map-mode').addEventListener('change', () => model.ride?.refreshMapMod
 byId('ride-map-terrain').addEventListener('change', event => model.ride?.map?.setTerrain(event.target.checked));
 byId('ride-download').addEventListener('click', () => saveRideImage('downloadCanvas', 'ride-card', '骑行战报.png'));
 byId('ride-share-image').addEventListener('click', () => saveRideImage('shareCanvas', 'ride-card', '骑行战报.png'));
+byId('ride-exploration-toggle').addEventListener('click', toggleRideExploration);
+byId('exploration-fit-all').addEventListener('click', () => model.ride?.explorationMap?.fitExploration());
+byId('exploration-download').addEventListener('click', () => saveRideImage('downloadCanvas', 'exploration-card', '骑行探索卡.png'));
+byId('exploration-share').addEventListener('click', () => saveRideImage('shareCanvas', 'exploration-card', '骑行探索卡.png'));
 byId('start-record').addEventListener('click', startRecording);
 byId('stop-record').addEventListener('click', () => stopRecording());
 byId('save-record').addEventListener('click', () => perform(async () => {

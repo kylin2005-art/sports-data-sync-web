@@ -1,6 +1,6 @@
 import { Decoder, Stream } from '@garmin/fitsdk';
 import { DOMParser, DOMImplementation, XMLSerializer } from '@xmldom/xmldom';
-import { WorkspaceError } from './sync-workspace.mjs';
+import { WorkspaceError, isKnownOtherSport } from './sync-workspace.mjs';
 
 const GPX = 'http://www.topografix.com/GPX/1/1';
 const GPX_OLD = 'http://www.topografix.com/GPX/1/0';
@@ -377,11 +377,15 @@ function estimatedSpeed(previous, point, elapsedMs) {
   return speed <= MAP_MAX_ESTIMATED_SPEED_MPS ? speed : null;
 }
 
-function rideMap(file, segments, messages) {
+function hasMapDatum(file) {
   // GPX and standard FIT GPS positions use WGS84. Some adapters and merged
   // files explicitly record a different or unverified datum.
   const datum = typeof file.coordinateSystem === 'string' ? file.coordinateSystem.toUpperCase().replace(/[-_\s:]/g, '') : '';
-  if (datum && datum !== 'WGS84' && datum !== 'EPSG4326') {
+  return !datum || datum === 'WGS84' || datum === 'EPSG4326';
+}
+
+function rideMap(file, segments, messages) {
+  if (!hasMapDatum(file)) {
     return { mapSegments: [], mapSpeedEstimated: false, mapCoordinateSystem: null };
   }
   const changes = timerChanges(messages);
@@ -474,6 +478,15 @@ function rideSession(messages) {
     fail('所选 FIT 已标记为其他运动，请选择骑行活动。');
   }
   return session;
+}
+
+export function readRideExplorationTrack(file) {
+  if (!hasMapDatum(file)) fail('这个文件的坐标系无法用于探索地图。');
+  if (/\.gpx$/i.test(file.fileName) && isKnownOtherSport(file.type)) fail('所选 GPX 已标记为其他运动，请选择骑行活动。');
+  const { messages, segments } = readTrack(file, false);
+  if (segments.length > MAX_SEGMENTS) fail('活动轨迹分段过多。');
+  const session = rideSession(messages);
+  return { startTime: rideStartTime(session, messages, segments), segments };
 }
 
 export function readRideSummary(file) {
