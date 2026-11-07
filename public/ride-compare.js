@@ -11,7 +11,7 @@ function distance([lonA, latA], [lonB, latB]) {
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(Math.min(1, arc)));
 }
 
-function sampleRoute(segments) {
+export function sampleRoute(segments) {
   const edges = [];
   let length = 0, gap = 0, previousEnd;
   for (const segment of segments ?? []) {
@@ -45,20 +45,19 @@ function follows(a, b) {
   return sorted[Math.floor(0.9 * (sorted.length - 1))] <= 80;
 }
 
+export function matchRideRoutes(a, b) {
+  if (!a || !b) return 'unavailable';
+  if (Math.min(a.length, b.length) / Math.max(a.length, b.length) < 0.85) return 'different';
+  const forward = follows(a.points, b.points);
+  const backward = follows(a.points, [...b.points].reverse());
+  return forward ? (backward ? 'ambiguous' : 'same') : backward ? 'reverse' : 'different';
+}
+
 export function compareRides(first, second) {
   const older = Date.parse(first.startTime), newer = Date.parse(second.startTime);
   const [baseline, ride] = Number.isFinite(older) && Number.isFinite(newer) && older > newer
     ? [second, first] : [first, second];
-  const a = sampleRoute(baseline.mapSegments), b = sampleRoute(ride.mapSegments);
-  let match = 'unavailable';
-  if (a && b) {
-    match = 'different';
-    if (Math.min(a.length, b.length) / Math.max(a.length, b.length) >= 0.85) {
-      const forward = follows(a.points, b.points);
-      const backward = follows(a.points, [...b.points].reverse());
-      match = forward ? (backward ? 'ambiguous' : 'same') : backward ? 'reverse' : 'different';
-    }
-  }
+  const match = matchRideRoutes(sampleRoute(baseline.mapSegments), sampleRoute(ride.mapSegments));
   const before = baseline.metrics, after = ride.metrics;
   const comparable = match === 'same' && before.durationKind && before.durationKind === after.durationKind &&
     before.durationSeconds > 0 && after.durationSeconds > 0;

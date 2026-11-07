@@ -2,6 +2,7 @@ import { Decoder, Stream } from '@garmin/fitsdk';
 import { DOMParser, DOMImplementation, XMLSerializer } from '@xmldom/xmldom';
 import { WorkspaceError, isKnownOtherSport } from './sync-workspace.mjs';
 import { bestFiveMinutePower } from './ride-power.mjs';
+import { sampleRoute } from './public/ride-compare.js';
 
 const GPX = 'http://www.topografix.com/GPX/1/1';
 const GPX_OLD = 'http://www.topografix.com/GPX/1/0';
@@ -574,6 +575,28 @@ function estimateRideMetrics(segments, metrics) {
     estimates.avgSpeedMps = metrics.distanceM / metrics.durationSeconds;
   }
   return estimates;
+}
+
+export function readRideReportEntry(file) {
+  if (isKnownOtherSport(file.type)) return null;
+  const { format, messages, segments } = readTrack(file, false);
+  if (segments.length > MAX_SEGMENTS) fail('活动轨迹分段过多。');
+  const session = rideSession(messages);
+  const start = rideStartTime(session, messages, segments);
+  const time = Date.parse(start ?? (file.time !== file.created ? file.time : null));
+  if (!Number.isFinite(time)) return null;
+  const { distanceM } = measureTrack(segments, messages, false);
+  const { metrics, estimated } = rideMetrics(format, session, segments, distanceM);
+  if (!(metrics.distanceM > 0) && distanceM > 0) {
+    metrics.distanceM = distanceM;
+    if (!estimated.includes('distanceM')) estimated.push('distanceM');
+  }
+  if (metrics.ascentM === null) {
+    metrics.ascentM = estimatedAscent(segments);
+    if (metrics.ascentM !== null) estimated.push('ascentM');
+  }
+  const { mapSegments } = rideMap(file, segments, messages);
+  return { time, metrics, estimated, route: sampleRoute(mapSegments) };
 }
 
 export function readRideSummary(file, { includeEstimates = false } = {}) {

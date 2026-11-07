@@ -54,6 +54,23 @@ export async function rideExplorationCounts(store) {
     [id, JSON.parse(payload).cells?.length ?? 0]));
 }
 
+export async function countNewMonthlyRideCells(store, monthAt, month, eligibleIds) {
+  await buildRideExplorationIndex(store);
+  const current = new Set(), previous = new Set();
+  for (const { id, payload } of store.rideExplorationInArchiveOrder(INDEX_VERSION)) {
+    if (!eligibleIds.has(id)) continue;
+    const { time, cells } = JSON.parse(payload);
+    if (!cells?.length || !Number.isFinite(time)) continue;
+    const activityMonth = monthAt(time);
+    if (activityMonth > month) continue;
+    const target = activityMonth === month ? current : previous;
+    for (const cell of cells) target.add(cell);
+  }
+  if (!current.size) return null;
+  for (const cell of current) if (previous.has(cell)) current.delete(cell);
+  return current.size;
+}
+
 export async function rideExplorationMonth(store, month, timeZone = 'UTC') {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month < '1970-01') {
     throw new WorkspaceError(400, '请选择有效的活动月份。');

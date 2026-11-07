@@ -45,6 +45,7 @@ const trackLibrary = { page: null, start: 0, loading: false, retryStart: 0, sort
 let monthlyRide = null;
 let openShareLibrary;
 let highlightsRequest = 0;
+let rideReportRequest = 0;
 let journalEntries = null, journalLoad = null, journalEditing = null, journalSaving = false;
 const trackDate = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
 const trackColumns = [
@@ -156,6 +157,7 @@ function showTab() {
   });
   if (current === 'tracks' && !trackLibrary.page) loadTrackLibrary();
   if (current === 'tracks' && !journalEntries) loadRideJournal();
+  if (current === 'tracks' && byId('ride-report').open) loadRideReport();
 }
 
 function renderSelect(select, selected) {
@@ -923,6 +925,90 @@ function clearMonthlyRide() {
   byId('ride-month-result').hidden = true;
   byId('ride-month-status').textContent = '';
   byId('ride-month-load').disabled = false;
+}
+
+function renderRideReport({ month, previousMonth, current, previous, newCells, comparisons, matchedCount, fasterCount }) {
+  const number = value => value.toLocaleString('zh-CN');
+  const kilometers = value => `${(value / 1000).toFixed(1)} km`;
+  const meters = value => `${number(Math.round(value))} m`;
+  const definitions = [
+    ['骑行次数', current.rideCount, previous.rideCount, number],
+    ['骑行天数', current.rideDays, previous.rideDays, number],
+    ['总里程', current.distanceM, previous.distanceM, kilometers, current.estimatedDistance, previous.estimatedDistance],
+    ['累计爬升', current.ascentM, previous.ascentM, meters, current.estimatedAscent, previous.estimatedAscent],
+    ['运动计时', current.timerSeconds, previous.timerSeconds, rideDuration],
+    ['经过时长', current.elapsedSeconds, previous.elapsedSeconds, rideDuration],
+    ['新探索格子', newCells, null, number],
+  ];
+  const signed = (value, format) => `${value < 0 ? '−' : value > 0 ? '+' : ''}${format(Math.abs(value))}`;
+  byId('ride-report-metrics').replaceChildren(...definitions.map(([label, value, before, format, estimated, priorEstimated]) => {
+    const card = element('div', 'ride-metric');
+    card.append(element('dt', '', label), element('dd', '', value === null ? '—' : `${estimated ? '≈ ' : ''}${format(value)}`));
+    if (value !== null && before !== null && previous.rideCount) {
+      const delta = signed(value - before, format);
+      const change = element('span', 'ride-unit ride-report-delta', `较上月 ${estimated || priorEstimated ? '≈ ' : ''}${delta}`);
+      card.lastElementChild.append(change);
+    }
+    return card;
+  }));
+  const coverage = `里程覆盖 ${current.distanceCount}/${current.rideCount} 趟，爬升覆盖 ${current.ascentCount}/${current.rideCount} 趟。`;
+  byId('ride-report-coverage').textContent = `${coverage} ${previous.rideCount ? `对照月份 ${previousMonth}，按两个月已入库数据比较。` : '上月暂无可统计记录。'} ≈ 表示估算。`;
+  const longest = byId('ride-report-longest');
+  longest.replaceChildren();
+  if (current.longest) {
+    const ride = current.longest;
+    longest.append(element('p', '', `当月最长 · ${ride.estimated ? '≈ ' : ''}${kilometers(ride.distanceM)} · ${ride.name}`),
+      button('查看这趟骑行', () => openRide(ride.id)));
+  }
+  byId('ride-report-progress').textContent = matchedCount
+    ? `匹配 ${matchedCount} 趟，其中 ${fasterCount} 趟比上次更快。${matchedCount > comparisons.length ? '显示最近 10 趟。' : ''}`
+    : '本月暂无同方向且计时口径一致的历史对照。重复骑过同一条路线后，这里会自动生成对比。';
+  byId('ride-report-matches').replaceChildren(...comparisons.map(result => {
+    const { ride, baseline, secondsSaved, estimatedTime, durationKind, heartRateDelta, powerDelta } = result;
+    const seconds = Math.round(secondsSaved);
+    const time = seconds === 0 ? '用时持平' : `${seconds > 0 ? '快' : '慢'} ${estimatedTime ? '约 ' : ''}${rideDuration(Math.abs(seconds))}`;
+    const changes = [time, durationKind === 'timer' ? '运动计时' : '经过时长'];
+    if (heartRateDelta !== null) changes.push(`均心 ${signed(heartRateDelta, Math.round)} bpm`);
+    if (powerDelta !== null) changes.push(`均功率 ${signed(powerDelta, Math.round)} W`);
+    const card = element('article', 'ride-metric ride-report-match');
+    card.append(element('h4', '', ride.name),
+      element('p', '', changes.join(' · ')),
+      element('p', 'muted', `${trackDate.format(ride.time)} 对比 ${trackDate.format(baseline.time)} · ${baseline.name}`),
+      button('查看两趟轨迹', () => {
+        if (model.working) return;
+        model.tracks = new Set([baseline.id, ride.id]);
+        renderTrackRows();
+        openRideComparison();
+      }));
+    return card;
+  }));
+  byId('ride-report-status').textContent = `${month} · ${number(current.rideCount)} 趟骑行`;
+  byId('ride-report-result').hidden = false;
+}
+
+async function loadRideReport() {
+  const request = ++rideReportRequest;
+  const month = byId('ride-report-month').value;
+  const status = byId('ride-report-status'), refresh = byId('ride-report-refresh');
+  byId('ride-report-result').hidden = true;
+  refresh.disabled = false;
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month < '1970-01') {
+    status.textContent = '请选择有效的活动月份。';
+    return;
+  }
+  const tz = new Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  refresh.disabled = true;
+  status.textContent = '正在生成月报。首次打开可能需要补齐旧档案的摘要…';
+  try {
+    const report = await api(`/api/ride-report/month?${new URLSearchParams({ month, tz })}`);
+    if (request !== rideReportRequest) return;
+    if (report.current.rideCount) renderRideReport(report);
+    else status.textContent = '这个月没有可统计的骑行。请选择其他月份，或先导入带活动日期的 FIT / GPX。';
+  } catch (error) {
+    if (request === rideReportRequest) status.textContent = error.message || '无法读取骑行月报。';
+  } finally {
+    if (request === rideReportRequest) refresh.disabled = false;
+  }
 }
 
 async function loadMonthlyRide() {
@@ -1764,6 +1850,12 @@ byId('exploration-fit-all').addEventListener('click', () => model.ride?.explorat
 byId('exploration-download').addEventListener('click', () => saveRideImage('downloadCanvas', 'exploration-card', '骑行探索卡.png'));
 byId('exploration-share').addEventListener('click', () => saveRideImage('shareCanvas', 'exploration-card', '骑行探索卡.png'));
 const monthToday = new Date();
+byId('ride-report-month').value = `${monthToday.getFullYear()}-${String(monthToday.getMonth() + 1).padStart(2, '0')}`;
+byId('ride-report').addEventListener('toggle', event => {
+  if (event.currentTarget.open && location.hash === '#tracks') loadRideReport();
+});
+byId('ride-report-month').addEventListener('change', loadRideReport);
+byId('ride-report-refresh').addEventListener('click', loadRideReport);
 byId('ride-highlights-year').value = String(monthToday.getFullYear());
 byId('ride-highlights-year').addEventListener('input', resetRideHighlights);
 byId('ride-highlights-form').addEventListener('submit', showRideHighlights);

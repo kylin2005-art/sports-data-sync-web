@@ -187,6 +187,29 @@
             <button type="button" id="merge-track" class="button button-secondary" disabled>合并为 GPX</button>
           </div>
         </div>
+        <section class="panel space" aria-labelledby="ride-report-heading">
+          <p class="eyebrow">MONTHLY RIDE REPORT</p>
+          <h2 id="ride-report-heading">自动骑行月报与进步分析</h2>
+          <p class="muted">按月回顾骑行量和新探索区域，看看同一条路线比上次骑得怎么样。</p>
+          <details id="ride-report">
+            <summary>查看自动月报</summary>
+            <div class="action-row">
+              <label class="field">活动月份<input id="ride-report-month" type="month" placeholder="例如 2026-11" min="1970-01"></label>
+              <button type="button" id="ride-report-refresh" class="button button-secondary">刷新月报</button>
+            </div>
+            <p id="ride-report-status" class="muted" role="status"></p>
+            <div id="ride-report-result" hidden>
+              <dl id="ride-report-metrics" class="ride-metrics exploration-metrics"></dl>
+              <p id="ride-report-coverage" class="muted"></p>
+              <div id="ride-report-longest" class="action-row"></div>
+              <div class="ride-month-highlight">
+                <h3>同路线进步分析</h3>
+                <p id="ride-report-progress" class="muted"></p>
+                <div id="ride-report-matches" class="record-list"></div>
+              </div>
+            </div>
+          </details>
+        </section>
         <section class="panel space" aria-labelledby="ride-journal-heading">
           <p class="eyebrow">ROUTE JOURNAL</p>
           <h2 id="ride-journal-heading">路线收藏与骑行手账</h2>
@@ -243,7 +266,7 @@
           <p class="muted">回看当月的骑行热图、代表骑行和探索纪录。生成热图时，浏览器会向底图服务请求当前区域的瓦片。</p>
           <div class="action-row">
             <label class="field">活动月份<input id="ride-month-input" type="month" placeholder="例如 2026-11" min="1970-01"></label>
-            <button type="button" id="ride-month-load" class="button button-primary">生成月报</button>
+            <button type="button" id="ride-month-load" class="button button-primary">生成明信片</button>
             <button type="button" id="ride-month-theme" class="button button-secondary">月度分享图</button>
           </div>
           <p id="ride-month-status" class="muted" role="status"></p>

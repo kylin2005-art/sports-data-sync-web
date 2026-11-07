@@ -42,6 +42,9 @@ export class SyncStore {
       CREATE TABLE IF NOT EXISTS ride_highlights (
         file_id TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (file_id, version)
       );
+      CREATE TABLE IF NOT EXISTS ride_reports (
+        file_id TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (file_id, version)
+      );
       CREATE TABLE IF NOT EXISTS ride_journal (file_id TEXT PRIMARY KEY NOT NULL, updated TEXT NOT NULL, payload TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS track_summaries (
         file_id TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL, start_ms INTEGER, payload TEXT NOT NULL
@@ -213,6 +216,22 @@ export class SyncStore {
   rideHighlightRows(version) {
     return this.db.prepare(`SELECT files.id, json_extract(files.payload, '$.name') AS name, ride_highlights.payload
       FROM ride_highlights JOIN files ON files.id = ride_highlights.file_id WHERE ride_highlights.version = ?`).all(version);
+  }
+
+  unindexedRideReportFiles(version) {
+    return this.db.prepare(`SELECT files.id FROM files LEFT JOIN ride_reports
+      ON ride_reports.file_id = files.id AND ride_reports.version = ?
+      WHERE ride_reports.file_id IS NULL ORDER BY files.rowid`).all(version).map(row => row.id);
+  }
+
+  saveRideReport(id, version, entry) {
+    this.db.prepare('INSERT OR IGNORE INTO ride_reports VALUES (?, ?, ?)').run(id, version, JSON.stringify(entry));
+  }
+
+  rideReportRows(version) {
+    return this.db.prepare(`SELECT files.id, json_extract(files.payload, '$.name') AS name, ride_reports.payload
+      FROM ride_reports JOIN files ON files.id = ride_reports.file_id
+      WHERE ride_reports.version = ? AND ride_reports.payload <> 'null'`).all(version);
   }
 
   trackLibraryPage(start, limit) {

@@ -488,6 +488,9 @@ body:has(.workspace) #credential-dialog {
 .workspace .ride-compare-plots canvas[hidden] { display: none; }
 .workspace .ride-month-highlight { margin-top: 20px; }
 .workspace .ride-month-highlight p { margin: 6px 0 10px; overflow-wrap: anywhere; }
+.workspace #ride-report summary { cursor: pointer; }
+.workspace .ride-report-match h4 { margin: 0; }
+.workspace .ride-metric .ride-report-delta { display: block; margin: 5px 0 0; }
 .workspace .ride-metrics.exploration-metrics { grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); }
 .workspace #ride-highlights-cards { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); }
 .workspace #ride-highlights-cards[hidden] { display: none; }
