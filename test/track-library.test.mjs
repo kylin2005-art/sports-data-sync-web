@@ -6,14 +6,18 @@ import { createMultiUserServer } from '../multi-user-server.mjs';
 import { createWorkspaceHandler } from '../server.mjs';
 import { SyncStore } from '../sync-store.mjs';
 
+function rideFit(date, metrics) {
+  const encoder = new Encoder();
+  encoder.onMesg(Profile.MesgNum.FILE_ID, { type: 'activity', manufacturer: 'development', product: 1 });
+  encoder.onMesg(Profile.MesgNum.SESSION, { startTime: new Date(date), sport: 'cycling', ...metrics });
+  return Buffer.from(encoder.close());
+}
+
 test('track library pages the owner archive and reads only visible summaries', async t => {
   const alice = new SyncStore(), bob = new SyncStore();
-  const encoder = new Encoder();
   const startTime = new Date('2026-11-04T00:00:00Z');
-  encoder.onMesg(Profile.MesgNum.FILE_ID, { type: 'activity', manufacturer: 'development', product: 1 });
-  encoder.onMesg(Profile.MesgNum.SESSION, { startTime, sport: 'cycling', totalTimerTime: 1800, totalDistance: 15000,
-    totalAscent: 245, enhancedAvgSpeed: 8.4, avgHeartRate: 145, avgPower: 200 });
-  const newest = alice.archive({ fileName: 'indoor.fit', data: Buffer.from(encoder.close()) }, { time: '2026-11-05T00:00:00Z' });
+  const newest = alice.archive({ fileName: 'indoor.fit', data: rideFit(startTime, { totalTimerTime: 1800, totalDistance: 15000,
+    totalAscent: 245, enhancedAvgSpeed: 8.4, avgHeartRate: 145, avgPower: 200 }) }, { time: '2026-11-05T00:00:00Z' });
   for (let day = 1; day <= 23; day++) {
     alice.archive({ fileName: `october-${day}.fit`, data: Buffer.from(`invalid FIT ${day}`) },
       { time: new Date(Date.UTC(2026, 9, day)).toISOString() });
@@ -72,4 +76,28 @@ test('track library pages the owner archive and reads only visible summaries', a
   const other = await (await request('bob')).json();
   assert.equal(other.total, 1);
   assert.deepEqual(other.files.map(file => file.id), [bobFile]);
+
+  const older = alice.archive({ fileName: 'older.fit', data: rideFit('2026-10-01T16:00:00Z', {
+    totalDistance: 20000, totalAscent: 450, enhancedAvgSpeed: 10, avgPower: 0,
+  }) }, { time: '2026-09-29T00:00:00Z' });
+  const midnight = new URLSearchParams({ from: '2026-10-01T16:00:00.000Z', before: '2026-10-02T16:00:00.000Z',
+    minDistance: '20', maxAscent: '450', minSpeed: '36', maxSpeed: '36', maxPower: '0' });
+  const filtered = await (await request('alice', '?' + midnight)).json();
+  assert.equal(filtered.total, 1);
+  assert.deepEqual(filtered.files.map(file => file.id), [older]);
+  assert.deepEqual(reads.slice(25), [older]);
+  assert.equal((await (await request('bob', '?' + midnight)).json()).total, 0);
+  assert.equal((await request('alice', '?minPower=250&maxPower=100')).status, 400);
+  assert.equal((await request('alice', '?minDistance=')).status, 400);
+  assert.equal((await request('alice', '?from=2026-10-01')).status, 400);
+  assert.equal((await request('alice', '?before=2026-10-01T00:00:00.000Z&from=2026-10-02T00:00:00.000Z')).status, 400);
+  const beforeNovember = '?before=2026-11-01T00:00:00.000Z';
+  const filteredPage = await (await request('alice', beforeNovember)).json();
+  const filteredTail = await (await request('alice', beforeNovember + '&start=20')).json();
+  assert.equal(filteredPage.total, 24);
+  assert.equal(filteredPage.nextStart, 20);
+  assert.equal(filteredTail.files.length, 4);
+  assert.equal(filteredTail.nextStart, null);
+  assert.equal(new Set([...filteredPage.files, ...filteredTail.files].map(file => file.id)).size, 24);
+  assert.equal(reads.length, 26);
 });

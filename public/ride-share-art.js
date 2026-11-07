@@ -404,7 +404,10 @@ export const shareThemes = recipes().map(([name, description], index) => ({ id: 
 
 export function rideShareSvg(id, options) {
   const [, , background, ink, draw] = recipes(posterData(id, options))[id - 1];
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1224" viewBox="0 0 360 408">' +
+  const tall = options?.format === 'douyin';
+  const height = tall ? 640 : 408;
+  const position = tall ? ' transform="translate(0 116)"' : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="${height * 3}" viewBox="0 0 360 ${height}">` +
     '<style>.en{font-family:Consolas,monospace;font-weight:700}.cn{font-family:system-ui,"Microsoft YaHei","PingFang SC",sans-serif}.serif{font-family:"Songti SC",SimSun,serif}.num{font-family:Bahnschrift,Arial,sans-serif;font-weight:700;font-variant-numeric:tabular-nums}</style>' +
-    box(0,0,360,408,background) + '<g fill="' + ink + '">' + draw() + '</g></svg>';
+    box(0,0,360,height,background) + '<g fill="' + ink + '"' + position + '>' + draw() + '</g></svg>';
 }

@@ -20,8 +20,9 @@ async function drawPoster(canvas, svg, isCurrent) {
     image.src = url;
     await image.decode();
     if (!isCurrent()) return;
-    canvas.width = 1080;
-    canvas.height = 1224;
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    canvas.dataset.format = canvas.height === 1920 ? 'douyin' : 'standard';
     canvas.getContext('2d').drawImage(image, 0, 0);
   } finally {
     URL.revokeObjectURL(url);
@@ -49,7 +50,7 @@ export function createRideShareLibrary(api) {
   const dialog = byId('library');
   const themes = byId('themes'), canvas = byId('library-canvas'), status = byId('library-status');
   const download = byId('library-download'), share = byId('library-native');
-  const controls = Object.fromEntries(['filter', 'title', 'scope', 'month', 'target', 'photo', 'date', 'notes']
+  const controls = Object.fromEntries(['filter', 'format', 'title', 'scope', 'month', 'target', 'photo', 'date', 'notes']
     .map(key => [key, byId(key)]));
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   let session, selected = 1, revision = 0;
@@ -99,7 +100,7 @@ export function createRideShareLibrary(api) {
     const month = controls.month.value;
     const target = controls.target.valueAsNumber;
     const scope = route ? controls.scope.value : 'hidden';
-    const options = { ride, scope, title: controls.title.value, showDate: controls.date.checked, target,
+    const options = { ride, scope, format: controls.format.value, title: controls.title.value, showDate: controls.date.checked, target,
       comparison: current.comparison, record: current.record, photo: id === 18 ? current.photo : null };
     byId('selected').textContent = `${String(id).padStart(2, '0')} ${shareThemes[id - 1].name}`;
     for (const [field, visible] of Object.entries({
@@ -166,7 +167,7 @@ export function createRideShareLibrary(api) {
     void refresh();
   });
   controls.filter.addEventListener('change', drawCatalog);
-  for (const control of ['title', 'scope', 'month', 'target', 'date', 'notes']) {
+  for (const control of ['format', 'title', 'scope', 'month', 'target', 'date', 'notes']) {
     controls[control].addEventListener(['title', 'target'].includes(control) ? 'input' : 'change', refresh);
   }
   controls.photo.addEventListener('change', async () => {
@@ -193,7 +194,8 @@ export function createRideShareLibrary(api) {
     button.addEventListener('click', async () => {
       const ticket = revision;
       try {
-        const outcome = await action(canvas, `Ride-${String(selected).padStart(2, '0')}-${shareThemes[selected - 1].name}.png`);
+        const suffix = canvas.dataset.format === 'douyin' ? '-9x16' : '';
+        const outcome = await action(canvas, `Ride-${String(selected).padStart(2, '0')}-${shareThemes[selected - 1].name}${suffix}.png`);
         if (ticket === revision) status.textContent = outcome === 'cancelled' ? '已取消分享。' :
           outcome === 'downloaded' ? 'PNG 已下载。' : '图片已分享。';
       } catch {

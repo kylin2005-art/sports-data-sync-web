@@ -4,7 +4,6 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomBytes } from 'node:crypto';
-import { setImmediate as yieldToRequests } from 'node:timers/promises';
 
 const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -42,8 +41,6 @@ const garminDiAssets = new Map([
   ['/garmin-di.js', ['garmin-di.js', 'text/javascript; charset=utf-8']],
 ]);
 const validId = (id) => typeof id === 'string' && /^[1-9]\d{0,19}$/.test(id);
-const trackPageSize = 20;
-const trackCacheSize = 100;
 
 export class RequestError extends Error {
   constructor(status, message) {
@@ -93,7 +90,6 @@ export function setResponseHeaders(response) {
 export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = {}) {
   const verified = { cn: false, com: false };
   const seen = new Set();
-  const trackSummaries = new Map();
   let exploreRide;
   let busy = false;
 
@@ -107,35 +103,6 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
   if (workspace) {
     verified.cn = workspace.hasGarmin('cn');
     verified.com = workspace.hasGarmin('com');
-  }
-
-  async function trackLibrary(params) {
-    const offsets = params.getAll('start');
-    const offset = offsets[0] ?? '0';
-    const start = Number(offset);
-    if (offsets.length > 1 || !/^\d+$/.test(offset) || !Number.isSafeInteger(start)) {
-      throw new RequestError(400, '轨迹列表分页位置无效。');
-    }
-    const { files, total } = workspace.store.trackLibraryPage(start, trackPageSize);
-    const { readRideSummary } = await import('./tracks.mjs');
-    const rows = [];
-    for (const { id, name, fileName, time, created } of files) {
-      if (!trackSummaries.has(id)) {
-        await yieldToRequests();
-        if (!trackSummaries.has(id)) {
-          const summary = readRideSummary(workspace.store.file(id));
-          if (trackSummaries.size >= trackCacheSize) trackSummaries.delete(trackSummaries.keys().next().value);
-          trackSummaries.set(id, summary);
-        }
-      }
-      const summary = trackSummaries.get(id);
-      const activityTime = typeof time === 'string' && time !== created &&
-        /^\d{4}-\d{2}-\d{2}(?:[T ]|$)/.test(time) && Number.isFinite(Date.parse(time)) ? time : null;
-      rows.push({ id, name, fileName, startTime: summary?.startTime ?? activityTime,
-        metrics: summary?.metrics ?? null, estimated: summary?.estimated ?? [] });
-    }
-    const next = start + rows.length;
-    return { files: rows, total, nextStart: next < total ? next : null };
   }
 
   const workspaceActions = workspace && new Map([
@@ -298,7 +265,10 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
         if (rideId) return json(response, 200, await (await import('./tracks.mjs')).processRide({
           id: rideId, includeShare: url.searchParams.get('share') === '1',
         }, workspace));
-        if (path === '/api/track-library') return json(response, 200, await trackLibrary(url.searchParams));
+        if (path === '/api/track-library') {
+          const { readTrackLibrary } = await import('./track-library.mjs');
+          return json(response, 200, await readTrackLibrary(workspace.store, url.searchParams));
+        }
         if (path === '/api/workspace') {
           const state = workspace.state();
           if (viewer) {

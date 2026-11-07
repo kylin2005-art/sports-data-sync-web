@@ -16,10 +16,19 @@ test('the complete theme catalog produces valid SVG and preserves route privacy'
   assert.equal(shareThemes.length, 24);
   for (const { id } of shareThemes) {
     const svg = rideShareSvg(id, options);
+    const douyin = rideShareSvg(id, { ...options, format: 'douyin' });
     const errors = [];
-    new DOMParser({ onError: (_level, error) => errors.push(error) }).parseFromString(svg, 'image/svg+xml');
+    const parser = new DOMParser({ onError: (_level, error) => errors.push(error) });
+    const standard = parser.parseFromString(svg, 'image/svg+xml').documentElement;
+    const tall = parser.parseFromString(douyin, 'image/svg+xml').documentElement;
     assert.deepEqual(errors, [], `theme ${id}`);
+    assert.equal(standard.getAttribute('height'), '1224');
+    assert.equal(tall.getAttribute('width'), '1080');
+    assert.equal(tall.getAttribute('height'), '1920');
+    assert.equal(tall.getAttribute('viewBox'), '0 0 360 640');
+    assert.equal(tall.getElementsByTagName('g')[0].getAttribute('transform'), 'translate(0 116)');
     assert.doesNotMatch(svg, /Private location|undefined|NaN/);
+    assert.doesNotMatch(douyin, /Private location|undefined|NaN/);
   }
   const hidden = posterData(1, options);
   const full = posterData(1, { ...options, scope: 'full' });

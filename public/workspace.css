@@ -409,6 +409,15 @@ body:has(.workspace) #credential-dialog {
 .workspace .run-log li[data-level="pending"] { color: #825000; }
 
 .workspace #track-table-help { margin: 7px 0 14px; }
+.workspace .track-filter { margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--panel-line); border-radius: 10px; }
+.workspace .track-filter summary { color: var(--panel-accent-dark); font-weight: 600; cursor: pointer; }
+.workspace #track-filter-fields { margin: 10px 0 0; padding: 0; border: 0; min-inline-size: 0; }
+.workspace .track-filter-ranges { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 8px 14px; }
+.workspace .track-filter-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 8px; }
+.workspace .track-filter-range > span { grid-column: 1 / -1; font-size: 13px; font-weight: 600; }
+.workspace .track-filter-range .field { margin: 0; min-width: 0; }
+.workspace .track-filter-range input { width: 100%; min-width: 0; padding-inline: 6px; }
+.workspace #track-filter-error { color: #963c32; }
 .workspace .track-table-scroll { overflow-x: auto; border: 1px solid var(--panel-line); border-radius: 10px; }
 .workspace .track-table { width: 100%; min-width: 830px; border-collapse: collapse; font-size: 13px; }
 .workspace .track-table th, .workspace .track-table td { padding: 10px 9px; text-align: right; white-space: nowrap; }
@@ -639,6 +648,7 @@ body:has(.workspace) #credential-dialog {
 .share-library-preview { min-width: 0; }
 .share-library-preview .ride-preview { max-width: 460px; }
 .share-library-preview canvas { display: block; width: min(100%, 46.76dvh); height: auto; }
+.share-library-preview canvas[data-format="douyin"] { width: min(100%, 29.81dvh); }
 @media (max-width: 680px) {
   .workspace #ride-share-library { padding: 12px; }
   .share-library-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }

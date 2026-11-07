@@ -41,7 +41,7 @@ const model = {
   activities: [], selected: new Set(), next: null, loaded: false, working: false,
   credential: null, jobId: null, tracks: new Set(), ride: null, viewer: null, features: {}, workoutTargets: [],
 };
-const trackLibrary = { page: null, start: 0, loading: false, retryStart: 0, sort: 'startTime', direction: -1 };
+const trackLibrary = { page: null, start: 0, loading: false, retryStart: 0, sort: 'startTime', direction: -1, filters: new URLSearchParams() };
 let monthlyRide = null;
 let openShareLibrary;
 let highlightsRequest = 0;
@@ -571,23 +571,72 @@ async function loadTrackLibrary(start = trackLibrary.start) {
   const status = byId('track-library-status');
   const prev = byId('track-prev'), next = byId('track-next'), retry = byId('track-retry');
   prev.disabled = next.disabled = true;
+  byId('track-filter-fields').disabled = true;
   retry.hidden = true;
-  status.textContent = '正在读取轨迹…';
+  const filtered = trackLibrary.filters.size > 0;
+  status.textContent = filtered ? '正在筛选整个存档。首次筛选可能需要建立历史摘要…' : '正在读取轨迹…';
   try {
-    const page = await api(`/api/track-library?start=${start}`);
+    const params = new URLSearchParams(trackLibrary.filters);
+    params.set('start', start);
+    const page = await api(`/api/track-library?${params}`);
     trackLibrary.page = page;
     trackLibrary.start = start;
     renderTrackRows();
-    status.textContent = page.files.length ? `第 ${start + 1}–${start + page.files.length} 条 · 共 ${page.total} 条`
-      : '先在记录中心导入或下载活动文件。';
+    status.textContent = page.files.length ? `第 ${start + 1}–${start + page.files.length} 条 · 共 ${page.total} 条${filtered ? '符合条件' : ''}`
+      : filtered ? '没有符合条件的骑行，可调整或清除筛选。' : '先在记录中心导入或下载活动文件。';
   } catch (error) {
     status.textContent = error instanceof TypeError ? '无法连接工作台服务，请重试。' : error.message;
     retry.hidden = false;
   } finally {
     trackLibrary.loading = false;
+    byId('track-filter-fields').disabled = false;
     prev.disabled = trackLibrary.start === 0;
     next.disabled = trackLibrary.page?.nextStart == null;
   }
+}
+
+function trackFilterParams(form) {
+  const values = new FormData(form);
+  const params = new URLSearchParams();
+  const start = values.get('startDate'), end = values.get('endDate');
+  if (start && end && start > end) throw new Error('开始日期不能晚于结束日期。');
+  if (start) params.set('from', new Date(start + 'T00:00:00').toISOString());
+  if (end) {
+    const nextDay = new Date(end + 'T00:00:00');
+    nextDay.setDate(nextDay.getDate() + 1);
+    nextDay.setHours(0, 0, 0, 0);
+    params.set('before', nextDay.toISOString());
+  }
+  for (const field of ['Distance', 'Ascent', 'Speed', 'Power']) {
+    const lower = 'min' + field, upper = 'max' + field;
+    const min = values.get(lower), max = values.get(upper);
+    if (min !== '' && max !== '' && Number(min) > Number(max)) {
+      const group = form.elements.namedItem(lower).closest('.track-filter-range');
+      throw new Error(group.getAttribute('aria-label') + '下限不能大于上限。');
+    }
+    if (min !== '') params.set(lower, min);
+    if (max !== '') params.set(upper, max);
+  }
+  return params;
+}
+
+function applyTrackFilters(filters) {
+  if (trackLibrary.loading) return;
+  if (String(filters) !== String(trackLibrary.filters)) {
+    trackLibrary.filters = filters;
+    trackLibrary.page = null;
+    trackLibrary.start = 0;
+    model.tracks.clear();
+    clearRide();
+    byId('ride-compare').hidden = true;
+    byId('track-preview').hidden = true;
+    byId('track-png').disabled = true;
+    renderTrackRows();
+    renderControls();
+  }
+  byId('track-filter-active').hidden = filters.size === 0;
+  byId('track-filter-error').hidden = true;
+  void loadTrackLibrary(0);
 }
 
 function renderHistory() {
@@ -1589,6 +1638,19 @@ byId('file-filter').addEventListener('input', renderFiles);
 byId('track-prev').addEventListener('click', () => loadTrackLibrary(Math.max(0, trackLibrary.start - 20)));
 byId('track-next').addEventListener('click', () => loadTrackLibrary(trackLibrary.page.nextStart));
 byId('track-retry').addEventListener('click', () => loadTrackLibrary(trackLibrary.retryStart));
+byId('track-filter-form').addEventListener('submit', event => {
+  event.preventDefault();
+  try { applyTrackFilters(trackFilterParams(event.currentTarget)); }
+  catch (error) {
+    const message = byId('track-filter-error');
+    message.textContent = error.message;
+    message.hidden = false;
+  }
+});
+byId('track-filter-clear').addEventListener('click', () => {
+  byId('track-filter-form').reset();
+  applyTrackFilters(new URLSearchParams());
+});
 byId('track-clear').addEventListener('click', () => {
   model.tracks.clear();
   clearRide();

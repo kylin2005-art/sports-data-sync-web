@@ -564,7 +564,19 @@ export function readRideHighlightMetrics(file) {
     estimatedDistance: !distance && distanceM > 0, estimatedAscent: ascent === null && ascentM !== null };
 }
 
-export function readRideSummary(file) {
+function estimateRideMetrics(segments, metrics) {
+  const estimates = {};
+  if (metrics.ascentM == null) {
+    const ascent = estimatedAscent(segments);
+    if (ascent != null) estimates.ascentM = ascent;
+  }
+  if (metrics.avgSpeedMps == null && metrics.distanceM > 0 && metrics.durationSeconds > 0) {
+    estimates.avgSpeedMps = metrics.distanceM / metrics.durationSeconds;
+  }
+  return estimates;
+}
+
+export function readRideSummary(file, { includeEstimates = false } = {}) {
   try {
     const format = trackFormat(file);
     const messages = format === 'fit' ? decodeFit(file.data, false) : null;
@@ -577,6 +589,11 @@ export function readRideSummary(file) {
     }
     const startTime = rideStartTime(session, messages, segments);
     const { metrics, estimated } = rideMetrics(format, session, segments, distanceM);
+    if (includeEstimates) {
+      const extra = estimateRideMetrics(segments, metrics);
+      Object.assign(metrics, extra);
+      estimated.push(...Object.keys(extra));
+    }
     return startTime || Object.values(metrics).some(value => value !== null) ? { startTime, metrics, estimated } : null;
   } catch (error) {
     if (error instanceof WorkspaceError) return null;
@@ -606,11 +623,7 @@ export function processRide({ id, includeShare = false } = {}, workspace) {
     ...rideMap(file, segments, messages) };
   if (!includeShare) return result;
   const speeds = points => points.map(segment => segment.map(point => point.speedMps));
-  const shareMetrics = {};
-  if (metrics.ascentM == null) shareMetrics.ascentM = estimatedAscent(segments);
-  if (metrics.avgSpeedMps == null && metrics.distanceM > 0 && metrics.durationSeconds > 0) {
-    shareMetrics.avgSpeedMps = metrics.distanceM / metrics.durationSeconds;
-  }
+  const shareMetrics = estimateRideMetrics(segments, metrics);
   return { ...result, shareMetrics, routeSpeeds: speeds(full), trimmedRouteSpeeds: speeds(trimmed), shareSpeedEstimated: speedEstimated };
 }
 

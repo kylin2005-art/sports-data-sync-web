@@ -115,6 +115,45 @@
         <div class="panel">
           <h2 id="track-library-heading">骑行轨迹</h2>
           <p class="muted" id="track-table-help">点表头可排序当前页。≈ 表示估算，— 表示文件没有可用数据。</p>
+          <details class="track-filter">
+            <summary>筛选骑行轨迹<span id="track-filter-active" hidden> · 已筛选</span></summary>
+            <form id="track-filter-form">
+              <fieldset id="track-filter-fields">
+                <div class="track-filter-ranges">
+                  <div class="track-filter-range" role="group" aria-label="活动日期">
+                    <span>活动日期</span>
+                    <label class="field">从<input name="startDate" type="date" max="9999-12-31"></label>
+                    <label class="field">至<input name="endDate" type="date" max="9999-12-31"></label>
+                  </div>
+                  <div class="track-filter-range" role="group" aria-label="距离">
+                    <span>距离（km）</span>
+                    <label class="field">最少<input name="minDistance" type="number" min="0" step="any" inputmode="decimal"></label>
+                    <label class="field">最多<input name="maxDistance" type="number" min="0" step="any" inputmode="decimal"></label>
+                  </div>
+                  <div class="track-filter-range" role="group" aria-label="累计爬升">
+                    <span>累计爬升（m）</span>
+                    <label class="field">最少<input name="minAscent" type="number" min="0" step="any" inputmode="decimal"></label>
+                    <label class="field">最多<input name="maxAscent" type="number" min="0" step="any" inputmode="decimal"></label>
+                  </div>
+                  <div class="track-filter-range" role="group" aria-label="平均速度">
+                    <span>平均速度（km/h）</span>
+                    <label class="field">最少<input name="minSpeed" type="number" min="0" step="any" inputmode="decimal"></label>
+                    <label class="field">最多<input name="maxSpeed" type="number" min="0" step="any" inputmode="decimal"></label>
+                  </div>
+                  <div class="track-filter-range" role="group" aria-label="平均功率">
+                    <span>平均功率（W）</span>
+                    <label class="field">最少<input name="minPower" type="number" min="0" step="any" inputmode="decimal"></label>
+                    <label class="field">最多<input name="maxPower" type="number" min="0" step="any" inputmode="decimal"></label>
+                  </div>
+                </div>
+                <div class="action-row">
+                  <button type="submit" class="button button-primary">应用筛选</button>
+                  <button type="button" id="track-filter-clear" class="button button-secondary">清除筛选</button>
+                </div>
+                <p id="track-filter-error" class="muted" role="status" hidden></p>
+              </fieldset>
+            </form>
+          </details>
           <div class="track-table-scroll" tabindex="0" role="region" aria-labelledby="track-library-heading">
             <table class="track-table" aria-labelledby="track-library-heading" aria-describedby="track-table-help">
               <thead><tr>
@@ -350,6 +389,10 @@
             <div class="share-library-preview">
               <h3 id="ride-share-selected"></h3>
               <div class="share-library-controls">
+                <label class="field">图片尺寸<select id="ride-share-format">
+                  <option value="standard">标准 · 1080 × 1224</option>
+                  <option value="douyin">抖音 9:16 · 1080 × 1920</option>
+                </select></label>
                 <label id="ride-share-title-field" class="field">图片标题<input id="ride-share-title" maxlength="24" placeholder="骑行记录"></label>
                 <label id="ride-share-scope-field" class="field">路线范围<select id="ride-share-scope">
                   <option value="hidden">隐藏路线</option><option value="trimmed">隐藏起终点附近</option><option value="full">完整路线</option>

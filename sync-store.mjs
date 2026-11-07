@@ -43,6 +43,10 @@ export class SyncStore {
         file_id TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (file_id, version)
       );
       CREATE TABLE IF NOT EXISTS ride_journal (file_id TEXT PRIMARY KEY NOT NULL, updated TEXT NOT NULL, payload TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS track_summaries (
+        file_id TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL, start_ms INTEGER, payload TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS track_summary_time ON track_summaries(version, start_ms);
       CREATE TABLE IF NOT EXISTS last_run (id INTEGER PRIMARY KEY, payload TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS workout_receipts (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
     `);
@@ -216,6 +220,51 @@ export class SyncStore {
     const files = this.db.prepare(`SELECT payload FROM files
       ORDER BY CASE WHEN json_extract(payload, '$.time') <> created THEN julianday(json_extract(payload, '$.time')) END DESC,
         created DESC, id DESC LIMIT ? OFFSET ?`).all(limit, start).map(row => JSON.parse(row.payload));
+    return { files, total };
+  }
+
+  trackSummary(id, version) {
+    const row = this.db.prepare('SELECT payload FROM track_summaries WHERE file_id = ? AND version = ?').get(id, version);
+    return row ? JSON.parse(row.payload) : undefined;
+  }
+
+  unindexedTrackFiles(version) {
+    return this.db.prepare(`SELECT files.id FROM files LEFT JOIN track_summaries
+      ON track_summaries.file_id = files.id AND track_summaries.version = ?
+      WHERE track_summaries.file_id IS NULL ORDER BY files.rowid`).all(version).map(row => row.id);
+  }
+
+  saveTrackSummaries(version, entries) {
+    const write = this.db.prepare(`INSERT INTO track_summaries (file_id, version, start_ms, payload) VALUES (?, ?, ?, ?)
+      ON CONFLICT(file_id) DO UPDATE SET version = excluded.version, start_ms = excluded.start_ms, payload = excluded.payload
+      WHERE track_summaries.version < excluded.version`);
+    this.db.exec('BEGIN');
+    try {
+      for (const [id, summary] of entries) {
+        write.run(id, version, summary.startTime ? Date.parse(summary.startTime) : null, JSON.stringify(summary));
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  filteredTrackPage(version, start, limit, { from, before, ranges }) {
+    const conditions = ['summary.version = ?'], values = [version];
+    if (from !== null) { conditions.push('summary.start_ms >= ?'); values.push(from); }
+    if (before !== null) { conditions.push('summary.start_ms < ?'); values.push(before); }
+    for (const [metric, min, max] of ranges) {
+      const path = '$.metrics.' + metric;
+      if (min !== null) { conditions.push('json_extract(summary.payload, ?) >= ?'); values.push(path, min); }
+      if (max !== null) { conditions.push('json_extract(summary.payload, ?) <= ?'); values.push(path, max); }
+    }
+    const match = `FROM track_summaries AS summary JOIN files ON files.id = summary.file_id
+      WHERE ${conditions.join(' AND ')}`;
+    const { total } = this.db.prepare(`SELECT COUNT(*) AS total ${match}`).get(...values);
+    const files = this.db.prepare(`SELECT files.payload AS file, summary.payload AS summary ${match}
+      ORDER BY summary.start_ms DESC, files.created DESC, files.id DESC LIMIT ? OFFSET ?`)
+      .all(...values, limit, start).map(row => ({ ...JSON.parse(row.file), ...JSON.parse(row.summary) }));
     return { files, total };
   }
 
