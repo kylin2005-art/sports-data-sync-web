@@ -440,7 +440,8 @@ function editJob(job) {
 }
 
 function renderJobMode() {
-  const recent = byId('job-mode').value === 'recent';
+  const mode = byId('job-mode').value;
+  const recent = mode === 'recent';
   const activityType = byId('job-activity-type');
   activityType.disabled = recent;
   activityType.parentElement.hidden = recent;
@@ -449,8 +450,10 @@ function renderJobMode() {
     input.disabled = !recent;
     input.parentElement.hidden = !recent;
   }
+  const scopeHelp = mode === 'incremental' ? '只传启用后发生的活动。本机文件按导入时间计算。已有回执会跳过。'
+    : '首次逐页读取来源历史。以后只传新增活动和明确失败的记录。';
   byId('job-mode-help').textContent = recent ? '每次只检查指定范围，已有回执的活动会跳过。'
-    : `首次逐页读取来源历史。以后只传新增活动和明确失败的记录。${activityType.value === 'cycling' ? '仅发送来源已标注的骑行，类型不明的活动会单独计数。' : ''}`;
+    : scopeHelp + (activityType.value === 'cycling' ? '仅发送来源已标注的骑行，类型不明的活动会单独计数。' : '');
 }
 
 function checked(container) { return [...byId(container).querySelectorAll('input:checked')].map(node => node.value); }
@@ -473,7 +476,8 @@ function renderJobs() {
     if (!sourceReady) missing.unshift(job.source);
     const timing = missing.length ? `等待连接 ${missing.map(label).join('、')}`
       : job.interval ? `每 ${job.interval} 分钟 · 下次 ${formatTime(job.nextRun)}` : '仅手动';
-    const scope = job.mode === 'all' ? (job.historyScannedAt ? '增量同步' : '待首次全量') : `${job.limit} 条 · 跳过 ${job.skip} 条`;
+    const scope = job.mode === 'incremental' ? `仅增量 · 启用 ${formatTime(job.incrementalSince)}`
+      : job.mode === 'all' ? (job.historyScannedAt ? '增量同步' : '待首次全量') : `${job.limit} 条 · 跳过 ${job.skip} 条`;
     const connectedOnly = canSync && missing.length > 0;
     const sync = button(connectedOnly ? '同步已连接目标' : '立即同步', () => startRun({ jobId: job.id, connectedOnly }), 'primary');
     sync.dataset.jobSync = canSync ? 'ready' : 'blocked';
@@ -1610,7 +1614,7 @@ byId('job-form').addEventListener('submit', event => {
     const mode = byId('job-mode').value;
     await api('/api/jobs/save', {
       id: model.jobId, name: byId('job-name').value, source: byId('job-source').value, targets: checked('job-targets'),
-      mode, activityType: mode === 'all' ? byId('job-activity-type').value : 'all', interval: Number(byId('job-interval').value),
+      mode, activityType: mode === 'recent' ? 'all' : byId('job-activity-type').value, interval: Number(byId('job-interval').value),
       ...(mode === 'recent' && { limit: Number(byId('job-limit').value), skip: Number(byId('job-skip').value) }),
     });
     await refresh();

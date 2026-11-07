@@ -27,6 +27,10 @@ test('the complete theme catalog produces valid SVG and preserves route privacy'
     assert.equal(tall.getAttribute('height'), '1920');
     assert.equal(tall.getAttribute('viewBox'), '0 0 360 640');
     assert.equal(tall.getElementsByTagName('g')[0].getAttribute('transform'), 'translate(0 116)');
+    for (const document of [standard, tall]) {
+      const titles = Array.from(document.getElementsByTagName('text')).filter(node => node.hasAttribute('data-poster-title'));
+      assert.deepEqual(titles.map(node => node.textContent), [options.title], `theme ${id} main title`);
+    }
     assert.doesNotMatch(svg, /Private location|undefined|NaN/);
     assert.doesNotMatch(douyin, /Private location|undefined|NaN/);
   }
@@ -40,6 +44,7 @@ test('the complete theme catalog produces valid SVG and preserves route privacy'
   assert.notEqual(full.route, trimmed.route);
   assert.match(rideShareSvg(1, { ...options, scope: 'trimmed' }), /骑行 &lt;&amp;&gt;/);
   assert.ok(!rideShareSvg(1, { ...options, scope: 'trimmed' }).includes(full.route));
+  assert.match(rideShareSvg(23, { ...options, title: '  ' }), /data-poster-title="">2026 年 11 月<\/text>/);
 });
 
 test('monthly share counts activity days in the requested time zone and reuses its index', async () => {

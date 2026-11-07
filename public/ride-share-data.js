@@ -106,7 +106,7 @@ export function posterData(id, {
     ? { current: exploration.currentCells, previous: exploration.previousCells, fresh: exploration.newCells } : null;
   const exploredTotal = exploration ? new Set([...exploration.currentCells, ...exploration.previousCells].map(String)).size : 0;
   return {
-    title, date, distanceNumber, distance, ascentNumber, ascent, ascentSignedNumber, ascentSigned: unit(ascentSignedNumber, 'm'),
+    title, customTitle: short(customTitle, 24), date, distanceNumber, distance, ascentNumber, ascent, ascentSignedNumber, ascentSigned: unit(ascentSignedNumber, 'm'),
     duration, durationLabel: `${duration} ${durationKind}`,
     speedNumber: estimate(number(finite(metrics.avgSpeedMps) ? metrics.avgSpeedMps * 3.6 : NaN, 1), estimated.includes('avgSpeedMps')),
     titleDistance: `${title} / ${distance}`, titleDate: [title, date].filter(Boolean).join(' / '),

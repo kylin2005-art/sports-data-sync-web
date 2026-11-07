@@ -6,6 +6,9 @@ const regions = new Set(['cn', 'com']);
 const pageSize = 20;
 const maxActivities = 50;
 const safeId = id => typeof id === 'string' && /^[\w.:-]{1,160}$/.test(id);
+const pagedJob = job => job?.mode === 'all' || job?.mode === 'incremental';
+const activityTimestamp = value => typeof value === 'string' && /[T ].*(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)
+  ? Date.parse(value) : NaN;
 const awaitingConfirmation = new Set(['sending', 'accepted', 'unconfirmed']);
 const durable = new Set([...awaitingConfirmation, 'confirmed', 'duplicate', 'guided']);
 const sportKey = value => typeof value === 'string' ? value.trim().toLowerCase().replace(/[ _-]+/g, '') : '';
@@ -437,7 +440,7 @@ export class SyncWorkspace {
     const { limit, skip, interval } = input;
     const mode = input.mode ?? (limit !== undefined || skip !== undefined ? 'recent' : 'all');
     const activityType = input.activityType ?? 'all';
-    if (!name || name.length > 70 || !['all', 'recent'].includes(mode) || ![0, 15, 30, 60].includes(interval) ||
+    if (!name || name.length > 70 || !['all', 'recent', 'incremental'].includes(mode) || ![0, 15, 30, 60].includes(interval) ||
         !['all', 'cycling'].includes(activityType) || (mode === 'recent' && activityType !== 'all') ||
         (mode === 'recent' && (!Number.isSafeInteger(limit) || limit < 1 || limit > maxActivities ||
           !Number.isSafeInteger(skip) || skip < 0 || skip > 1000))) {
@@ -453,8 +456,13 @@ export class SyncWorkspace {
       old.targets.length === route.targets.length &&
       old.targets.every(target => route.targets.includes(target));
     const job = { ...route, id: old?.id || randomUUID(), name, mode, activityType, interval,
-      ...(mode === 'recent' ? { limit, skip } : { historyScannedAt: sameRoute ? old.historyScannedAt || null : null }),
       nextRun: interval ? Date.now() + interval * 60_000 : null, lastRun: old?.lastRun || null };
+    if (mode === 'recent') Object.assign(job, { limit, skip });
+    if (mode === 'all') job.historyScannedAt = sameRoute ? old.historyScannedAt || null : null;
+    if (mode === 'incremental') {
+      const keepStart = old?.mode === 'incremental' && old.source === route.source && Number.isFinite(activityTimestamp(old.incrementalSince));
+      job.incrementalSince = keepStart ? old.incrementalSince : new Date().toISOString();
+    }
     this.store.saveJob(job);
     return job;
   }
@@ -536,7 +544,8 @@ export class SyncWorkspace {
     this.#run = { id: randomUUID(), jobId: job?.id || null, name: job?.name || (verification ? '重启去重验收' : '手动同步'), status: 'running',
       started: new Date().toISOString(), stopRequested: false, confirmed: 0, skipped: 0, failed: 0, unconfirmed: 0, guided: 0,
       ...(omittedTargets.length && { omittedTargets }),
-      ...(job?.mode === 'all' && { activityType: job.activityType ?? 'all', scanned: 0, matched: 0, unclassified: 0 }),
+      ...(pagedJob(job) && { activityType: job.activityType ?? 'all', scanned: 0, matched: 0, unclassified: 0 }),
+      ...(job?.mode === 'incremental' && { outsideIncrement: 0, missingTime: 0 }),
       logs: [] };
     this.#pending = this.#execute(route, selected, job, verification).catch(() => {
       this.#run.status = 'failed';
@@ -593,7 +602,7 @@ export class SyncWorkspace {
     return [...items.values()].slice(job.skip, need);
   }
 
-  async *#scanHistory(source) {
+  async *#scanHistory(source, since) {
     const seen = new Set();
     const native = source === 'blackbird' && this.sources.historyPage;
     const cursors = new Set();
@@ -617,6 +626,8 @@ export class SyncWorkspace {
         throw error;
       }
       for (const activity of page.activities) {
+        // The local store orders by import time. Remote lists may be out of order.
+        if (source === 'local' && since !== undefined && activityTimestamp(activity.created) < since) return;
         if (seen.has(activity.id)) continue;
         seen.add(activity.id);
         yield activity;
@@ -753,19 +764,29 @@ export class SyncWorkspace {
 
   async #execute(route, selected, job, verification) {
     const fullHistory = job?.mode === 'all';
+    const incremental = job?.mode === 'incremental';
+    const since = incremental ? activityTimestamp(job.incrementalSince) : undefined;
     try {
       if (this.#run.omittedTargets) {
         this.#log(`本次只同步已连接目标。未连接：${this.#run.omittedTargets.map(target => this.platforms.get(target).name).join('、')}。`);
       }
-      const items = fullHistory ? this.#scanHistory(route.source) : selected || await this.#selectForJob(job);
-      this.#log(fullHistory ? (job.historyScannedAt ? '增量同步：检查来源列表，已有回执的活动不会重传。' : '首次同步：逐页读取全部历史活动，已有回执的活动不会重传。')
-        : `读取到 ${items.length} 条待处理活动。`);
+      if (incremental && !Number.isFinite(since)) throw new WorkspaceError(400, '仅增量任务缺少有效的启用时间，请重新保存。');
+      const items = pagedJob(job) ? this.#scanHistory(route.source, since) : selected || await this.#selectForJob(job);
+      if (incremental) this.#log('仅增量：只处理任务启用后的活动，已有回执会跳过。');
+      else if (fullHistory) this.#log(job.historyScannedAt ? '增量同步：检查来源列表，已有回执的活动不会重传。'
+        : '首次同步：逐页读取全部历史活动，已有回执的活动不会重传。');
+      else this.#log(`读取到 ${items.length} 条待处理活动。`);
       let consecutiveDownload406s = 0;
       for await (const activity of items) {
         if (this.#run.stopRequested) break;
-        if (fullHistory) {
-          const sport = sportGroup(route.source, activity);
+        if (pagedJob(job)) {
           this.#run.scanned++;
+          if (incremental) {
+            const time = activityTimestamp(route.source === 'local' ? activity.created : activity.time);
+            if (!Number.isFinite(time)) { this.#run.missingTime++; continue; }
+            if (time < since) { this.#run.outsideIncrement++; continue; }
+          }
+          const sport = sportGroup(route.source, activity);
           if (sport === 'unknown') this.#run.unclassified++;
           if (this.#run.activityType === 'cycling' && sport !== 'cycling') continue;
           this.#run.matched++;
@@ -832,6 +853,10 @@ export class SyncWorkspace {
         const outcome = status === 'finished' ? '完成' : status === 'stopped' ? '已停止' : '中断';
         const unknown = activityType === 'cycling' && unclassified ? `，跳过运动类型未识别的 ${unclassified} 条` : '';
         this.#log(`历史扫描${outcome}：已检查 ${scanned} 条，符合范围 ${matched} 条${unknown}。`);
+      } else if (incremental) {
+        const { scanned, matched, outsideIncrement, missingTime } = this.#run;
+        const skipped = missingTime ? `，跳过时间不明确的 ${missingTime} 条` : '';
+        this.#log(`仅增量：已检查 ${scanned} 条，符合范围 ${matched} 条，排除启用前 ${outsideIncrement} 条${skipped}。`);
       }
       if (job && !this.#run.omittedTargets) {
         const historyScannedAt = job.mode === 'all' && !job.historyScannedAt && this.#run.status === 'finished' ? this.#run.finished : job.historyScannedAt;

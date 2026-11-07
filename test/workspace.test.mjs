@@ -43,6 +43,74 @@ async function finish(read) {
   assert.fail('同步任务没有在预期时间内结束');
 }
 
+test('incremental-only jobs persist their start and retry new activities without importing history', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'incremental-sync-'));
+  const db = join(dir, 'sync.sqlite');
+  let workspace;
+  t.after(async () => {
+    await workspace?.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  let activities, failing = true;
+  const downloaded = [];
+  const open = () => fixture(new SyncStore(db), {
+    activities: async start => start ? { activities: activities.slice(2), nextStart: null }
+      : { activities: activities.slice(0, 2), nextStart: 2 },
+    download: async (_region, id) => {
+      downloaded.push(id);
+      if (failing && id === 'retry') throw failure(503, '临时失败');
+      return { data: Buffer.concat([data, Buffer.from(id)]), fileName: id + '.fit' };
+    },
+  }).workspace();
+  workspace = open();
+  workspace.setGarmin('cn', { accountKey: 'test-cn' });
+  const job = workspace.saveJob({ name: '只传新骑行', source: 'cn', targets: ['local'], mode: 'incremental', activityType: 'cycling', interval: 0 });
+  const since = Date.parse(job.incrementalSince);
+  const at = offset => new Date(since + offset).toISOString();
+  activities = [
+    { ...ride, id: 'old', time: at(-1) },
+    { ...ride, id: 'unknown-time', time: at(1000).slice(0, 19) },
+    { ...ride, id: 'retry', time: at(0) },
+    { ...ride, id: 'new', time: at(1000) },
+    { ...ride, id: 'walk', time: at(2000), type: 'walking' },
+  ];
+  workspace.start({ jobId: job.id });
+  const first = await finish(() => workspace.state());
+  assert.deepEqual(downloaded, ['retry', 'new']);
+  assert.equal(first.run.failed, 1);
+  assert.equal(first.run.outsideIncrement, 1);
+  assert.equal(first.run.missingTime, 1);
+  await workspace.close();
+  workspace = open();
+  workspace.setGarmin('cn', { accountKey: 'test-cn' });
+  failing = false;
+  const edited = workspace.saveJob({ ...job, name: '改名后继续' });
+  assert.equal(edited.incrementalSince, job.incrementalSince);
+  workspace.start({ jobId: job.id });
+  const next = await finish(() => workspace.state());
+  assert.deepEqual(downloaded, ['retry', 'new', 'retry']);
+  assert.equal(next.run.confirmed, 1);
+  assert.equal(next.run.skipped, 1);
+});
+
+test('incremental-only jobs from local files use import time, not the original ride date', async t => {
+  const store = new SyncStore();
+  const workspace = fixture(store).workspace();
+  t.after(() => workspace.close());
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-08T00:00:00Z') });
+  const older = store.archive({ data: Buffer.from('12345678.FITolder'), fileName: 'older.fit' }, ride);
+  t.mock.timers.setTime(Date.now() + 1000);
+  workspace.setGarmin('com', { accountKey: 'test-com' });
+  const job = workspace.saveJob({ name: '新导入文件', source: 'local', targets: ['com'], mode: 'incremental', interval: 0 });
+  t.mock.timers.setTime(Date.now() + 1000);
+  const newer = store.archive({ data, fileName: 'newer.fit' }, ride);
+  workspace.start({ jobId: job.id });
+  const result = await finish(() => workspace.state());
+  assert.equal(result.run.confirmed, 1);
+  assert(result.history.some(entry => entry.sourceId === newer && entry.status === 'confirmed'));
+  assert(!result.history.some(entry => entry.sourceId === older));
+});
+
 test('account sign-in preserves the existing session when provider readback fails', async t => {
   const store = new SyncStore();
   const saves = [];

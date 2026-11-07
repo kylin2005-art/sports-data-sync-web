@@ -75,7 +75,7 @@
           <div class="form-grid">
             <label class="field">任务名称<input id="job-name" maxlength="70" required placeholder="例如 佳明跨区同步"></label>
             <label class="field">数据来源<select id="job-source"></select></label>
-            <label class="field">同步范围<select id="job-mode" aria-describedby="job-mode-help"><option value="all">首次全量，之后增量</option><option value="recent">仅同步最近指定条数</option></select></label>
+            <label class="field">同步范围<select id="job-mode" aria-describedby="job-mode-help"><option value="all">首次全量，之后增量</option><option value="incremental">仅增量（从启用后开始）</option><option value="recent">仅同步最近指定条数</option></select></label>
             <label class="field">运动类型<select id="job-activity-type" aria-describedby="job-mode-help"><option value="all">全部运动</option><option value="cycling">仅骑行</option></select></label>
             <label class="field" hidden>同步条数<input id="job-limit" type="number" value="20" min="1" max="50" required disabled></label>
             <label class="field" hidden>跳过最近<input id="job-skip" type="number" value="0" min="0" max="1000" required disabled></label>
@@ -393,7 +393,7 @@
                   <option value="standard">标准 · 1080 × 1224</option>
                   <option value="douyin">抖音 9:16 · 1080 × 1920</option>
                 </select></label>
-                <label id="ride-share-title-field" class="field">图片标题<input id="ride-share-title" maxlength="24" placeholder="骑行记录"></label>
+                <label class="field">图片主标题<input id="ride-share-title" maxlength="24" placeholder="留空使用主题原题"></label>
                 <label id="ride-share-scope-field" class="field">路线范围<select id="ride-share-scope">
                   <option value="hidden">隐藏路线</option><option value="trimmed">隐藏起终点附近</option><option value="full">完整路线</option>
                 </select></label>

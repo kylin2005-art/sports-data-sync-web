@@ -148,38 +148,44 @@ function recipes(d) {
   const profile = d?.profile;
   const strokeRoute = (color, width = 4) => p(route, color, width);
   const routeMark = (color, size) => d.first ? circ(...d.first, size, color) : '';
+  const headline = (x, y, fallback, size, font, attrs, width = 315) => {
+    const label = d.customTitle || fallback;
+    const units = Array.from(d.customTitle).reduce((sum, char) => sum + (/^[\x20-\x7e]$/.test(char) ? .85 : 1.15), 0);
+    const fitted = units ? Math.min(size, Math.floor(width / units)) : size;
+    return t(x, y, label, fitted, font, `${attrs} data-poster-title=""`);
+  };
   return [
     ['路线贴纸', '日常分享', '#173cda', '#fffdf2', () =>
       t(22,29,'RIDE / ROUTE EDITION',11,'en')+t(336,29,'01',11,'en','text-anchor="end"')+line(22,41,338,41,'#91a4f9')+
-  t(22,86,d.title,37,'cn','font-weight="800"')+t(22,109,d.date,11,'en')+
+  headline(22,86,d.title,37,'cn','font-weight="800"')+t(22,109,d.date,11,'en')+
   g('translate(9 108) scale(1.04)',p(route,'#102ea6',22,'transform="translate(1 6)"')+strokeRoute('#fffdf2',21)+strokeRoute('#213fe0',8)+routeMark('#ffca51',5))+
   line(22,316,338,316,'#91a4f9')+t(22,360,d.distanceNumber,40,'num')+t(22,385,'DISTANCE / KM',11,'en')+t(212,350,d.ascentSigned,22,'num')+t(212,373,d.durationLabel,12)],
     ['山脊等高线', '爬坡与长途', '#112f2b', '#f4f2d9', () =>
-      contour(168,160,16)+contour(317,232,6)+box(0,0,360,92,'#112f2b')+t(21,28,'RIDE / TOPOGRAPHIC SERIES',11,'en','fill="#c7e5a2"')+t(21,72,'山脊之上',34,'cn','font-weight="800"')+
+      contour(168,160,16)+contour(317,232,6)+box(0,0,360,92,'#112f2b')+t(21,28,'RIDE / TOPOGRAPHIC SERIES',11,'en','fill="#c7e5a2"')+headline(21,72,'山脊之上',34,'cn','font-weight="800"')+
   g('translate(19 80) scale(.99 .92)',p(route,'#112f2b',8)+strokeRoute('#dcf5a6',3.5))+
   box(0,273,360,135,'#112f2b')+line(22,273,338,273,'#648474')+t(22,311,d.ascentSigned,32,'num','fill="#dcf5a6"')+t(174,298,'累计爬升',12)+t(174,318,d.titleDistance,12)+
   g('translate(22 323) scale(1 .7)',p(profile,'#dcf5a6',2))+line(22,385,338,385,'#648474')+t(22,399,profile?'所选路线海拔':'等高线为装饰',9)+t(338,399,d.distance,9,'en','text-anchor="end"')],
     ['竞速黑牌', '同路线挑战', '#1a1c1f', '#fff8ec', () =>
       box(22,23,7,15,'#ff7848')+t(38,35,'RIDE / SAME ROUTE',11,'en')+line(22,50,338,50,'#5e6061')+
-  t(22,83,d.resultTitle,23,'cn','font-weight="700"')+t(19,163,d.resultValue,d.resultValue.length>7?54:70,'num','fill="#ff7848"')+
+  headline(22,83,d.resultTitle,23,'cn','font-weight="700"')+t(19,163,d.resultValue,d.resultValue.length>7?54:70,'num','fill="#ff7848"')+
   g('translate(108 178) scale(.76 .63)',strokeRoute('#494d51',5)+p(route,'#fff8ec',2.8,'stroke-dasharray="2 7"'))+
-  t(22,202,d.title,15)+t(22,226,d.distance,14,'en')+t(22,250,d.resultNote,12,'cn','fill="#cbc7bc"')+
+  t(22,202,d.customTitle ? d.resultTitle : d.title,14)+t(22,226,d.distance,14,'en')+t(22,250,d.resultNote,12,'cn','fill="#cbc7bc"')+
   box(22,304,316,79,'#292d31')+t(34,328,d.currentLabel,11)+t(183,328,d.baselineLabel,11)+t(34,361,d.currentValue,23,'num')+t(183,361,d.baselineValue,23,'num')+line(167,319,167,368,'#55585a')],
     ['街区解锁', '探索与新格子', '#dfe7e3', '#102f3a', () =>
-      t(21,28,'RIDE / EXPLORER MAP',11,'en')+t(21,69,'今天开了新图',29,'cn','font-weight="800"')+
+      t(21,28,'RIDE / EXPLORER MAP',11,'en')+headline(21,69,'今天开了新图',29,'cn','font-weight="800"')+
   box(0,87,360,222,'#cadbd8')+gridArt(d.grid)+
   (d.grid ? '' : t(180,204,'仅显示探索统计',17,'cn','text-anchor="middle" font-weight="700"'))+
   t(21,364,d.explored,52,'num')+t(122,355,'新增格子',17,'cn','font-weight="800"')+t(122,378,d.exploredTotal,12)+box(248,344,10,10,'#ffca55')+t(264,354,'本次新增',10)+box(248,365,10,10,'#377882')+t(264,375,'历史走过',10)],
     ['骑行月刊', '月度明信片', '#f8ecdd', '#513126', () =>
-      t(22,29,"RIDE LETTER / MONTHLY",11,'en')+t(337,29,d.month.slice(0,4),11,'en','text-anchor="end"')+line(22,41,338,41,'#ad8e77')+
-  t(22,88,d.monthTitle,29,'serif','font-weight="800"')+
+      t(22,29,"RIDE LETTER / MONTHLY",11,'en')+t(337,29,d.month,11,'en','text-anchor="end"')+line(22,41,338,41,'#ad8e77')+
+  headline(22,88,d.monthTitle,29,'serif','font-weight="800"')+
   box(22,105,316,178,'#eedcc8')+windowed(22,105,316,178,g('translate(15 8) scale(.90 .75)',map('#d3bca3','#e1b8a1')+g('translate(24 4)',strokeRoute('#92503a',5))))+
   t(32,268,d.hasRoute ? "当月代表路线" : "当月骑行统计",10,'cn','fill="#684533"')+line(22,306,338,306,'#ad8e77')+
   t(22,346,d.monthDistance,30,'num')+t(131,346,d.monthAscent,30,'num')+t(260,346,d.monthRideCount,30,'num')+
   t(22,367,'总距离 km',11)+t(131,367,'累计爬升 m',11)+t(260,367,'骑行次数',11)+t(22,392,d.monthFooter,11)],
     ['周末路书', '路线手账 / 约骑', '#f9f5e6', '#303823', () =>
       t(21,27,'RIDE / FIELD NOTES',11,'en')+line(21,39,339,39,'#9eaa8a')+
-  t(21,80,'周末走这条',34,'serif','font-weight="800"')+t(22,104,d.facts,12)+
+  headline(21,80,'周末走这条',34,'serif','font-weight="800"')+t(22,104,d.facts,12)+
   box(22,119,316,139,'#e4ead5')+windowed(22,119,316,139,g('translate(10 7) scale(.84 .64)',map('#ccd6b8','#b4cebf')+p(route,'#f4f2dc',7)+strokeRoute('#496438',3.5)))+
   d.tags.map((tag,i)=>box(23+i*101,269,94,21,'#dce5cb')+t(32+i*101,284,tag,11)).join('')+
   line(22,308,338,308,'#a6ae92')+t(22,331,'01  补水',12,'cn','font-weight="700"')+t(114,331,d.water,12)+
@@ -187,7 +193,7 @@ function recipes(d) {
     ['周末车票', '给骑过的路线留张票', ticketInk, ticketInk, () =>
       box(26,24,308,360,ticketPaper,'rx="5"')+box(37,35,286,337,'none','stroke="#746a47"')+
   t(48,57,'RIDE RAIL / WEEKEND PASS',11,'en')+t(312,57,"RIDE 07",11,'en','text-anchor="end"')+
-  line(48,69,312,69,'#8a7649')+t(48,111,d.title,33,'serif','font-weight="800"')+
+  line(48,69,312,69,'#8a7649')+headline(48,111,d.title,33,'serif','font-weight="800"',264)+
   t(48,133,d.date || "骑行纪念票",11)+
   g('translate(82 131) scale(.65 .59)',strokeRoute(ticketInk,4)+routeMark(ticketInk,6))+
   t(48,251,'DISTANCE',9,'en')+t(162,251,'TIME',9,'en')+t(245,251,'ASCENT',9,'en')+
@@ -197,7 +203,7 @@ function recipes(d) {
   t(312,340,'已骑完',17,'serif','text-anchor="end" font-weight="800"')+t(49,360,"RIDE / ACTIVITY ARCHIVE",9,'en')],
     ['路线指纹', '用轨迹做一枚印章', '#efebfa', '#28244c', () =>
       t(23,30,'RIDE / ROUTE IMPRESSION',11,'en')+t(337,30,'08',11,'en','text-anchor="end"')+
-  line(23,43,337,43,'#a4a0b6')+t(23,86,'骑过的痕迹',33,'cn','font-weight="800"')+
+  line(23,43,337,43,'#a4a0b6')+headline(23,86,'骑过的痕迹',33,'cn','font-weight="800"')+
   box(24,106,312,199,'#e5dff4')+
   [30,324].map(x=>[112,293].map(y=>p('M'+x+' '+(y+5)+'h10M'+(x+5)+' '+y+'v10','#8f86ad')).join('')).join('')+
   g('translate(20 101) scale(1 .94)',Array.from({length:8},(_,i)=>
@@ -214,12 +220,12 @@ function recipes(d) {
   filled('M15 291 79 268 117 284 170 246 226 288 273 250 345 289V373H15Z','#174f4c')+
   filled('M122 373C210 331 90 330 159 298S259 261 219 246C284 262 220 294 191 314S216 345 215 373Z',zinePaper)+
   p('M172 373C222 335 124 331 178 306S260 264 219 246','#e97d59',2,'stroke-dasharray="5 7"')+
-  t(24,120,'公路之外',58,'serif','font-weight="800"')+t(28,143,'THE ROAD OUT',12,'en')+
+  headline(24,120,'公路之外',58,'serif','font-weight="800"',308)+t(28,143,'THE ROAD OUT',12,'en')+
   box(24,304,152,53,zineInk)+t(33,326,d.title,13,'cn','fill="#fbefce"')+t(33,344,d.distance+" / "+d.ascent,10,'en','fill="#fbefce"')+
   t(23,394,d.date,10,'en')+t(337,394,'骑行专刊',11,'cn','text-anchor="end"')],
     ['速度光谱', '看哪一段骑得最快', '#15202b', '#f5f7f7', () =>
       t(23,30,'RIDE / SPEED TRACE',11,'en','fill="#a8bbc5"')+
-  t(23,74,'快慢，都有颜色',30,'cn','font-weight="800"')+
+  headline(23,74,'快慢，都有颜色',30,'cn','font-weight="800"')+
   box(20,94,320,191,'#1b2d39')+windowed(20,94,320,191,g('translate(-3 -12)',map('#2a4350','#26495a')))+
   g('translate(20 95)',strokeRoute('#132231',10)+speedTrace(d.speedLines)+routeMark('#f5f7f7',4))+
   (d.hasSpeeds ? speedColors.map((color,i)=>box(23+i*80,302,73,5,color)+t(23+i*80,324,['<18','18–<26','26–<34','≥34 km/h'][i],10,'en')).join('') :
@@ -234,10 +240,10 @@ function recipes(d) {
   circ(180,201,77,'none','stroke="#d5a457" stroke-width="1" stroke-dasharray="2 4"')+
   filled('M119 209 153 166 170 184 194 150 240 209Z','#edbb67')+filled('M170 184 194 150 217 181 199 175 192 181 182 175Z','#fff0c3')+
   t(180,246,d.ascentSigned,33,'num','text-anchor="middle"')+t(180,263,'累计爬升',11,'cn','text-anchor="middle"')+
-  t(180,342,'今日爬坡勋章',29,'serif','text-anchor="middle" font-weight="800"')+
+  headline(180,342,'今日爬坡勋章',29,'serif','text-anchor="middle" font-weight="800"')+
   line(23,359,337,359,'#806775')+t(23,383,d.titleDistance,11)+t(337,383,d.date,11,'en','text-anchor="end"')],
     ['骑迹三格', '三幕讲完这一趟', '#f7efdf', '#302d33', () =>
-      t(23,29,'RIDE / THREE PANELS',11,'en')+t(23,72,'一趟骑行，三幕',32,'cn','font-weight="800"')+
+      t(23,29,'RIDE / THREE PANELS',11,'en')+headline(23,72,'一趟骑行，三幕',32,'cn','font-weight="800"')+
   box(22,90,316,90,'#e8b76d','stroke="#302d33" stroke-width="2"')+
   windowed(23,91,314,88,filled('M111 88 171 56 213 66 285 34 314 43V88Z','#d19a52')+circ(241,37,25,'#fff0bb')+chapterArt(d.chapters[0],'#302d33'))+
   t(34,114,'CHAPTER 01',11,'en')+t(34,153,'起段',22,'cn','font-weight="800"')+
@@ -254,8 +260,8 @@ function recipes(d) {
       t(21,26,'VOL. 01  /  WEEKEND EDITION',10,'en')+t(339,26,d.date,10,'en','text-anchor="end"')+
   line(21,39,339,39,newsInk)+t(180,94,'骑 行 日 报',41,'serif','text-anchor="middle" font-weight="800"')+
   line(21,107,339,107,newsInk)+line(21,110,339,110,newsInk)+
-  t(21,133,"今日头条 / "+d.title,12,'cn','fill="#813a32" font-weight="800"')+
-  t(21,169,"又骑了一趟",29,'serif','font-weight="800"')+
+  t(21,133,d.customTitle ? '今日头条' : "今日头条 / "+d.title,12,'cn','fill="#813a32" font-weight="800"')+
+  headline(21,169,"又骑了一趟",29,'serif','font-weight="800"')+
   box(21,185,188,134,'#dfd4bd')+
   g('translate(7 195) scale(.66 .61)',strokeRoute(newsInk,3.4)+routeMark('#813a32',4))+
   line(221,185,221,319,'#b0a48e')+t(233,212,d.distance,23,'num')+t(233,232,'骑行距离',10)+
@@ -272,14 +278,14 @@ function recipes(d) {
   g('translate(21 19) scale(.93 .88)',filled(jersey,'#283b65')+
    filled('M130 151H210V166H130ZM130 171H210V177H130Z','#eab65a')+
    p(jersey,'#243447',2.4)+t(170,147,'RIDE',20,'en','text-anchor="middle" fill="#f6ead5"'))+
-  box(40,242,280,121,'#f3eddb','rx="6"')+t(52,273,d.title,25,'cn','font-weight="800"')+
+  box(40,242,280,121,'#f3eddb','rx="6"')+headline(52,273,d.title,25,'cn','font-weight="800"',218)+
   t(309,273,'LOOP',10,'en','text-anchor="end"')+line(52,284,308,284,'#9e9b94')+
   t(52,319,d.distanceNumber,26,'num')+t(141,319,d.ascentNumber,26,'num')+t(233,319,d.speedNumber,26,'num')+
   t(52,340,'距离 / km',10)+t(141,340,'爬升 / m',10)+t(233,340,'均速 / km/h',10)],
     ['路线蓝图', '适合标记关键路段', '#133f72', blueprintInk, () =>
       box(14,14,332,380,'none','stroke="#8aafd6"')+
   t(26,39,'RIDE / ROUTE BLUEPRINT',10,'en')+t(334,39,'REV. 01',10,'en','text-anchor="end"')+
-  line(26,50,334,50,'#8aafd6')+t(26,87,'路线蓝图',28,'cn','font-weight="800"')+
+  line(26,50,334,50,'#8aafd6')+headline(26,87,'路线蓝图',28,'cn','font-weight="800"',308)+
   Array.from({length:14},(_,i)=>line(26+i*22,101,26+i*22,283,'#315e8b')).join('')+
   Array.from({length:9},(_,i)=>line(26,102+i*22,334,102+i*22,'#315e8b')).join('')+
   g('translate(31 99)',strokeRoute('#e7f5ff',2.6)+routeMark('#e9c879',4))+
@@ -289,7 +295,7 @@ function recipes(d) {
   line(26,364,334,364,'#8aafd6')+t(26,383,d.titleDate,10)+t(334,383,'示意比例',10,'cn','text-anchor="end"')],
     ['骑行唱片', '把每一趟做成一张专辑', '#f5ad93', '#231f29', () =>
       t(21,27,"RIDE RECORDS",10,'en')+t(339,27,'VOL. 16',10,'en','text-anchor="end"')+
-  t(21,72,'这一趟的节奏',34,'serif','font-weight="800"')+
+  headline(21,72,'这一趟的节奏',34,'serif','font-weight="800"')+
   circ(180,191,104,'#1d1d28')+
   Array.from({length:8},(_,i)=>circ(180,191,54+i*6,'none','stroke="'+(i%2?'#454553':'#333340')+'" stroke-width="1.2"')).join('')+
   p('M112 141A84 84 0 0 1 160 111M209 273A87 87 0 0 0 261 227','#9d7775',2)+
@@ -300,7 +306,7 @@ function recipes(d) {
   line(23,369,337,369,'#99675f')+t(23,389,d.titleDistance,10)+t(337,389,d.date,10,'en','text-anchor="end"')],
     ['骑行站牌', '用几个地标讲清路线', '#e8f0ed', '#173a39', () =>
       t(21,29,'RIDE / LOOP LINE',11,'en')+t(339,29,'LINE 01',11,'en','text-anchor="end"')+
-  t(21,66,'骑行站牌',31,'cn','font-weight="800"')+
+  headline(21,66,'骑行站牌',31,'cn','font-weight="800"')+
   box(21,78,318,250,'#f5f8f3','stroke="#c5d8d0"')+
   stationArt(d.distanceKm)+
   line(21,342,339,342,'#9fb4ad')+t(21,379,d.distance,29,'num')+t(339,368,d.title,13,'cn','text-anchor="end"')+
@@ -317,7 +323,7 @@ function recipes(d) {
    g('translate(151 100) scale(1.12)',bicycle('#302c3c','#b9d9cd'))+
    box(10,10,61,18,'#f2dbba')+t(15,23,'示意插画',9)))+
   t(32,298,d.title,22,'serif','font-weight="800"')+t(321,298,d.distance,21,'num','text-anchor="end"')+
-  t(21,360,'今天，有人一起骑',29,'serif','font-weight="800"')+
+  headline(21,360,'今天，有人一起骑',29,'serif','font-weight="800"')+
   line(21,374,339,374,'#b29a92')+t(21,393,'GROUP RIDE MEMORY',10,'en')+t(339,393,d.durationLabel,11,'cn','text-anchor="end"')],
     ['运动电影海报', '把长骑做成电影主视觉', '#102125', filmCream, () =>
       box(15,14,330,380,'none','stroke="#7a8f80"')+t(27,37,'RIDE CINEMA  /  FEATURE 019',10,'en')+
@@ -328,7 +334,7 @@ function recipes(d) {
   filled('M69 341 171 240 183 240 298 341Z','#58655a')+
   p('M169 341 177 250',filmCream,2,'stroke-dasharray="8 9"')+
   g('translate(126 226) scale(1.06)',bicycle('#0f2023','#ebbf8b'))+
-  t(27,86,'逆风而行',43,'serif','font-weight="800"')+t(29,112,'INTO THE WIND',14,'en')+
+  headline(27,86,'逆风而行',43,'serif','font-weight="800"',304)+t(29,112,'INTO THE WIND',14,'en')+
   box(16,339,328,54,'#102125')+line(27,340,333,340,'#7a8f80')+
   t(27,366,d.title,16,'serif','font-weight="800"')+
   t(333,366,d.distance+" / "+d.ascentSigned,16,'num','text-anchor="end"')+t(27,383,'A WEEKEND RIDE',9,'en')],
@@ -341,7 +347,7 @@ function recipes(d) {
   box(26,25,171,22,comicInk)+t(33,41,'RIDE / COMIC BOOK',11,'en','fill="#fff1b9"')+
   filled('M45 143 100 130 73 91 131 108 141 64 175 99 216 65 218 107 279 88 256 127 320 146 276 173 321 200 262 207 278 249 227 230 197 272 176 233 117 260 122 215 60 222 89 181Z','#fff4c0')+
   p('M45 143 100 130 73 91 131 108 141 64 175 99 216 65 218 107 279 88 256 127 320 146 276 173 321 200 262 207 278 249 227 230 197 272 176 233 117 260 122 215 60 222 89 181Z',comicInk,3)+
-  t(176,195,'冲！',83,'cn','font-weight="900" fill="#b6393d" text-anchor="middle" transform="rotate(-9 176 170)"')+
+  headline(176,195,'冲！',83,'cn','font-weight="900" fill="#b6393d" text-anchor="middle" transform="rotate(-9 176 170)"',177)+
   g('translate(43 253) scale(.47 .32)',strokeRoute(comicInk,5)+routeMark('#b6393d',5))+
   t(192,290,d.title,17,'cn','font-weight="800"')+
   box(26,329,307,49,comicInk)+t(38,361,d.distance,25,'num','fill="#fff1b9"')+
@@ -350,7 +356,7 @@ function recipes(d) {
       box(21,22,318,364,'#e9e4cb','stroke="#6a7b68" stroke-width="1.5" rx="6"')+
   box(28,29,304,350,'none','stroke="#879281" stroke-dasharray="3 4" rx="5"')+
   t(40,55,'RIDE / WOVEN ROUTES',10,'en')+t(320,55,'NO. 021',10,'en','text-anchor="end"')+
-  t(40,89,d.title,24,'serif','font-weight="800"')+
+  headline(40,89,d.title,24,'serif','font-weight="800"',280)+
   box(39,101,282,195,'#dcdcc2')+
   Array.from({length:33},(_,i)=>line(46+i*8,107,46+i*8,277,'#c1c8ac')).join('')+
   Array.from({length:24},(_,i)=>line(46,107+i*7.15,310,107+i*7.15,'#c1c8ac')).join('')+
@@ -360,7 +366,7 @@ function recipes(d) {
   t(320,340,"爬升 "+d.ascent,12,'cn','text-anchor="end"')+t(320,360,d.date,10,'en','text-anchor="end"')],
     ['山地积木', '把真实轨迹放进一块立体地形', '#e1dfd0', '#213f3c', () =>
       t(22,30,'RIDE / TERRAIN OBJECT',10,'en')+t(338,30,'PLATE 22',10,'en','text-anchor="end"')+
-  t(22,73,'把山带回家',35,'serif','font-weight="800"')+
+  headline(22,73,'把山带回家',35,'serif','font-weight="800"')+
   filled('M19 197 207 275 207 317 19 239Z','#789183')+
   filled('M207 275 338 184 338 226 207 317Z','#4a7166')+
   p('M19 208 207 286 338 195M19 220 207 298 338 207M19 231 207 309 338 218','#c0c7a7',1.5)+
@@ -376,7 +382,7 @@ function recipes(d) {
   t(338,378,'示意地形模型',10,'cn','text-anchor="end"')],
     ['骑行日历', '看看这个月哪几天骑过', '#f0ece0', '#214940', () =>
       t(22,29,'RIDE / MONTH GRID',10,'en')+t(338,29,d.month,10,'en','text-anchor="end"')+
-  t(22,79,d.monthTitle,32,'serif','font-weight="800"')+
+  headline(22,79,d.monthTitle,32,'serif','font-weight="800"')+
   box(22,99,316,180,'#e4e8d9')+
   ['日','一','二','三','四','五','六'].map((day,i)=>t(43+i*45.5,121,day,12,'cn','text-anchor="middle"')).join('')+
   Array.from({length:d.daysInMonth},(_,i)=>{
@@ -390,7 +396,7 @@ function recipes(d) {
   t(22,375,'骑行日',11)+t(133,375,'总距离 km',11)+t(250,375,'累计爬升 m',11)],
     ['百公里刻度', '用机械仪表显示挑战进度', '#222925', '#f4efd9', () =>
       t(22,30,'RIDE / DISTANCE CHALLENGE',10,'en')+t(338,30,d.target+" KM TARGET",10,'en','text-anchor="end"')+
-  line(22,44,338,44,'#74786a')+t(22,84,'今天，骑到哪一格',29,'cn','font-weight="800"')+
+  line(22,44,338,44,'#74786a')+headline(22,84,'今天，骑到哪一格',29,'cn','font-weight="800"')+
   dialArc(100,'#4c5549')+(d.progress?dialArc(d.progress,'#efbd62'):'')+dialTicks+
   t(180,186,'已完成',12,'cn','text-anchor="middle"')+t(180,236,d.distanceNumber,61,'num','text-anchor="middle"')+
   t(180,259,"KM / "+d.target+" KM",12,'en','text-anchor="middle"')+

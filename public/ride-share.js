@@ -104,7 +104,7 @@ export function createRideShareLibrary(api) {
       comparison: current.comparison, record: current.record, photo: id === 18 ? current.photo : null };
     byId('selected').textContent = `${String(id).padStart(2, '0')} ${shareThemes[id - 1].name}`;
     for (const [field, visible] of Object.entries({
-      title: !monthly, scope: route, month: monthly, target: id === 24, photo: id === 18,
+      scope: route, month: monthly, target: id === 24, photo: id === 18,
       date: Boolean(ride?.startTime) && dateThemes.has(id), notes: id === 6,
     })) byId(`${field}-field`).hidden = !visible;
     setReady(false);
