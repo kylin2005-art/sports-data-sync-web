@@ -455,8 +455,10 @@ export class SyncWorkspace {
     const sameRoute = old?.source === route.source && (old.activityType ?? 'all') === activityType &&
       old.targets.length === route.targets.length &&
       old.targets.every(target => route.targets.includes(target));
+    const paused = old?.paused === true;
     const job = { ...route, id: old?.id || randomUUID(), name, mode, activityType, interval,
-      nextRun: interval ? Date.now() + interval * 60_000 : null, lastRun: old?.lastRun || null };
+      ...(paused && { paused }),
+      nextRun: !paused && interval ? Date.now() + interval * 60_000 : null, lastRun: old?.lastRun || null };
     if (mode === 'recent') Object.assign(job, { limit, skip });
     if (mode === 'all') job.historyScannedAt = sameRoute ? old.historyScannedAt || null : null;
     if (mode === 'incremental') {
@@ -465,6 +467,19 @@ export class SyncWorkspace {
     }
     this.store.saveJob(job);
     return job;
+  }
+
+  setJobPaused({ id, paused }) {
+    if (typeof paused !== 'boolean') throw new WorkspaceError(400, '请选择暂停或恢复任务。');
+    const job = this.store.jobs().find(item => item.id === id);
+    if (!job) throw new WorkspaceError(404, '未找到该同步任务。');
+    const stopping = this.busy && this.#run.jobId === id;
+    if (!paused && job.paused && stopping) throw new WorkspaceError(409, '当前同步正在结束，请稍后恢复任务。');
+    if ((job.paused === true) !== paused) {
+      this.store.saveJob({ ...job, paused, nextRun: !paused && job.interval ? Date.now() + job.interval * 60_000 : null });
+    }
+    if (paused && stopping) this.stop();
+    return { message: paused ? (stopping ? '任务已暂停，当前请求结束后停止同步。' : '任务已暂停。') : '任务已恢复。' };
   }
 
   deleteJob({ id }) {
@@ -524,6 +539,7 @@ export class SyncWorkspace {
     if (this.busy) throw new WorkspaceError(409, '有同步任务正在运行。');
     const job = input.jobId && this.store.jobs().find(item => item.id === input.jobId);
     if (input.jobId && !job) throw new WorkspaceError(404, '未找到该同步任务。');
+    if (job?.paused) throw new WorkspaceError(409, '请先恢复已暂停的任务。');
     const connectedOnly = job && input.connectedOnly === true;
     const route = this.#route(job || input, !connectedOnly);
     let omittedTargets = [];
@@ -822,6 +838,7 @@ export class SyncWorkspace {
                 }
               }
             }
+            if (this.#run.stopRequested) break;
             const outcome = await this.#send(entry, target, file, activity);
             if (outcome) this.#run[outcome]++;
           } catch (error) {
@@ -859,9 +876,12 @@ export class SyncWorkspace {
         this.#log(`仅增量：已检查 ${scanned} 条，符合范围 ${matched} 条，排除启用前 ${outsideIncrement} 条${skipped}。`);
       }
       if (job && !this.#run.omittedTargets) {
-        const historyScannedAt = job.mode === 'all' && !job.historyScannedAt && this.#run.status === 'finished' ? this.#run.finished : job.historyScannedAt;
-        this.store.saveJob({ ...job, ...(job.mode === 'all' && { historyScannedAt }), lastRun: this.#run.finished,
-          nextRun: job.interval ? Date.now() + job.interval * 60_000 : null });
+        const saved = this.store.jobs().find(item => item.id === job.id);
+        if (saved) {
+          const historyScannedAt = saved.mode === 'all' && !saved.historyScannedAt && this.#run.status === 'finished' ? this.#run.finished : saved.historyScannedAt;
+          this.store.saveJob({ ...saved, ...(saved.mode === 'all' && { historyScannedAt }), lastRun: this.#run.finished,
+            nextRun: !saved.paused && saved.interval ? Date.now() + saved.interval * 60_000 : null });
+        }
       }
       this.store.saveRun(this.#run);
     }
@@ -870,7 +890,7 @@ export class SyncWorkspace {
   schedule() {
     this.#timer = setInterval(() => {
       if (this.busy || this.isBusy()) return;
-      const job = this.store.jobs().find(item => item.nextRun && item.nextRun <= Date.now() &&
+      const job = this.store.jobs().find(item => !item.paused && item.nextRun && item.nextRun <= Date.now() &&
         this.#ready(item.source) && item.targets.every(id => this.#targetReady(id)));
       if (job) this.start({ jobId: job.id });
     }, 15_000);

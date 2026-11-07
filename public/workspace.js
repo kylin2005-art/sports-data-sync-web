@@ -211,6 +211,9 @@ function renderControls() {
   byId('run').disabled = busy || !connected(model.source) || model.selected.size === 0 || model.targets.size === 0 ||
     [...model.targets].some(id => !targetReady(id));
   document.querySelectorAll('[data-job-sync]').forEach(node => { node.disabled = busy || node.dataset.jobSync === 'blocked'; });
+  document.querySelectorAll('[data-job-toggle]').forEach(node => {
+    node.disabled = model.working || (running() && model.run.jobId === node.dataset.jobResume);
+  });
   byId('setup-full-ride').disabled = busy || !platform(model.source)?.source;
   byId('selected-count').textContent = `已选 ${model.selected.size} 条`;
   byId('source-status').textContent = connected(model.source) ? connectionNames[platform(model.source).state] : '先到平台账号连接此来源。';
@@ -472,17 +475,24 @@ function renderJobs() {
     const path = `${label(job.source)} → ${job.targets.map(label).join('、')}`;
     const sourceReady = connected(job.source);
     const missing = job.targets.filter(id => !targetReady(id));
-    const canSync = sourceReady && missing.length < job.targets.length;
+    const canSync = !job.paused && sourceReady && missing.length < job.targets.length;
     if (!sourceReady) missing.unshift(job.source);
-    const timing = missing.length ? `等待连接 ${missing.map(label).join('、')}`
+    const timing = job.paused ? '已暂停' : missing.length ? `等待连接 ${missing.map(label).join('、')}`
       : job.interval ? `每 ${job.interval} 分钟 · 下次 ${formatTime(job.nextRun)}` : '仅手动';
     const scope = job.mode === 'incremental' ? `仅增量 · 启用 ${formatTime(job.incrementalSince)}`
       : job.mode === 'all' ? (job.historyScannedAt ? '增量同步' : '待首次全量') : `${job.limit} 条 · 跳过 ${job.skip} 条`;
     const connectedOnly = canSync && missing.length > 0;
     const sync = button(connectedOnly ? '同步已连接目标' : '立即同步', () => startRun({ jobId: job.id, connectedOnly }), 'primary');
     sync.dataset.jobSync = canSync ? 'ready' : 'blocked';
+    const pause = button(job.paused ? '恢复' : '暂停', () => perform(async () => {
+      const result = await api('/api/jobs/pause', { id: job.id, paused: !job.paused });
+      await refresh();
+      notice(result.message, 'success');
+    }));
+    pause.dataset.jobToggle = '';
+    if (job.paused) pause.dataset.jobResume = job.id;
     return recordRow(job.name, `${path} · ${scope}${job.activityType === 'cycling' ? ' · 仅骑行' : ''} · ${timing}`, [
-      sync, ...(missing.length ? [link('连接账号', '#accounts', 'quiet')] : []),
+      sync, pause, ...(missing.length ? [link('连接账号', '#accounts', 'quiet')] : []),
       button('编辑', () => editJob(job), 'quiet'),
       button('移除', () => perform(async () => {
         if (!confirm(`移除任务“${job.name}”？`)) return;

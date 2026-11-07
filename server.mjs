@@ -118,6 +118,7 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
     ['/api/run', input => workspace.start(input)],
     ['/api/stop', () => workspace.stop()],
     ['/api/jobs/save', input => workspace.saveJob(input)],
+    ['/api/jobs/pause', input => workspace.setJobPaused(input)],
     ['/api/jobs/delete', input => workspace.deleteJob(input)],
     ['/api/workouts/list', input => workspace.listWorkouts(input)],
     ['/api/workouts/publish', input => workspace.publishWorkout(input)],
@@ -296,6 +297,7 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
       if (request.headers.origin !== expectedOrigin) throw new RequestError(403, '请从当前工作台页面执行操作。');
       if (path === '/api/stop') return json(response, 200, workspace.stop());
       const input = importFile ? null : await readInput(request, workspaceActions?.has(path) ? 64 * 1024 : 1024);
+      if (path === '/api/jobs/pause') return json(response, 200, workspaceActions.get(path)(input));
       if (busy || workspace?.busy) throw new RequestError(409, '有操作正在执行，请等它结束。');
       busy = true;
       try {

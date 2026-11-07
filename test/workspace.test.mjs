@@ -111,6 +111,78 @@ test('incremental-only jobs from local files use import time, not the original r
   assert(!result.history.some(entry => entry.sourceId === older));
 });
 
+test('a saved job can be paused during a download and resumed after restart', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'pause-sync-'));
+  const db = join(dir, 'sync.sqlite');
+  const started = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  let uploads = 0;
+  const app = fixture(new SyncStore(db), {
+    download: async () => {
+      started.resolve();
+      await release.promise;
+      return { data, fileName: 'ride.fit' };
+    },
+    upload: async (_region, _file, callbacks) => {
+      await callbacks.beforeUpload();
+      uploads++;
+      await callbacks.onImported(imported);
+      return imported;
+    },
+  });
+  const server = createServer(app.garmin, app.workspace);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  let reopened;
+  t.after(async () => {
+    release.resolve();
+    if (server.listening) {
+      await new Promise(resolve => server.close(resolve));
+      await server.syncWorkspace.close();
+    }
+    await reopened?.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const post = (path, body, requestOrigin = origin) => fetch(origin + path, {
+    method: 'POST', headers: { Origin: requestOrigin, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const state = async () => (await fetch(origin + '/api/workspace')).json();
+  for (const region of ['cn', 'com']) assert.equal((await post('/api/verify', { region })).status, 200);
+  const job = await (await post('/api/jobs/save', { name: '骑行任务', source: 'cn', targets: ['com'], interval: 15 })).json();
+  assert.ok(job.nextRun);
+  assert.equal((await post('/api/run', { jobId: job.id })).status, 200);
+  await started.promise;
+  assert.equal((await post('/api/jobs/pause', { id: job.id, paused: true }, 'https://example.com')).status, 403);
+  assert.equal((await post('/api/jobs/pause', { id: job.id, paused: true })).status, 200);
+  assert.equal((await post('/api/jobs/pause', { id: job.id, paused: false })).status, 409);
+  release.resolve();
+  const stopped = await finish(state);
+  assert.equal(stopped.run.status, 'stopped');
+  assert.equal(stopped.jobs[0].paused, true);
+  assert.equal(stopped.jobs[0].nextRun, null);
+  assert.equal(uploads, 0);
+  assert.equal((await post('/api/run', { jobId: job.id })).status, 409);
+  const edited = await (await post('/api/jobs/save', { ...job, name: '改名仍暂停' })).json();
+  assert.equal(edited.paused, true);
+  assert.equal(edited.nextRun, null);
+  await new Promise(resolve => server.close(resolve));
+  await server.syncWorkspace.close();
+
+  const reopenedStore = new SyncStore(db);
+  reopened = fixture(reopenedStore).workspace();
+  for (const region of ['cn', 'com']) reopened.setGarmin(region, { accountKey: `test-${region}` });
+  assert.equal(reopened.state().jobs[0].paused, true);
+  assert.throws(() => reopened.start({ jobId: job.id }), { status: 409 });
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: Date.now() });
+  reopened.schedule();
+  t.mock.timers.tick(15 * 60_000);
+  assert.equal(reopened.state().run.status, 'stopped');
+  reopened.setJobPaused({ id: job.id, paused: false });
+  assert.equal(reopened.state().jobs[0].nextRun, Date.now() + 15 * 60_000);
+  t.mock.timers.tick(15 * 60_000);
+  assert.equal((await finish(() => reopened.state())).run.confirmed, 1);
+});
+
 test('account sign-in preserves the existing session when provider readback fails', async t => {
   const store = new SyncStore();
   const saves = [];
