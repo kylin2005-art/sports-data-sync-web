@@ -591,3 +591,56 @@ body:has(.workspace) #credential-dialog {
 @media (min-width: 760px) {
   .workspace .flow-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
 }
+.workspace #ride-share-library {
+  width: min(1040px, calc(100% - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 18px;
+  color: inherit;
+  border: 1px solid var(--panel-line, #dce4ee);
+  border-radius: 16px;
+  background: #fff;
+}
+#ride-share-library::backdrop { background: #10213b9c; }
+.share-library-top, .share-library-controls { display: flex; gap: 12px; flex-wrap: wrap; }
+.share-library-top { justify-content: space-between; align-items: start; margin-bottom: 14px; }
+.share-library-top h2, .share-library-preview h3 { margin: 0; }
+.share-library-layout { display: grid; grid-template-columns: minmax(240px, .8fr) minmax(0, 1.2fr); gap: 18px; }
+.share-library-controls { margin: 12px 0; align-items: center; }
+.share-library-controls .field { flex: 1 1 138px; min-width: 0; }
+.share-library-controls .choice { flex: 0 0 100%; }
+.share-library-controls input { min-width: 0; }
+.share-library-themes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  gap: 8px;
+  max-height: min(67dvh, 660px);
+  overflow: auto;
+  padding: 4px;
+}
+.share-library-theme {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px;
+  color: #17324e;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #cbd8e7;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.share-library-theme[aria-pressed="true"] { border-color: #1768d6; box-shadow: inset 0 0 0 1px #1768d6; background: #edf5ff; }
+.share-library-theme:focus-visible { outline: 2px solid #1768d6; outline-offset: 1px; }
+.share-library-theme img { width: 100%; height: auto; aspect-ratio: 216 / 245; border-radius: 4px; background: #e8eef4; }
+.share-library-preview { min-width: 0; }
+.share-library-preview .ride-preview { max-width: 460px; }
+.share-library-preview canvas { display: block; width: min(100%, 46.76dvh); height: auto; }
+@media (max-width: 680px) {
+  .workspace #ride-share-library { padding: 12px; }
+  .share-library-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .share-library-themes { max-height: 180px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

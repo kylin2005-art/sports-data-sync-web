@@ -43,6 +43,7 @@ const model = {
 };
 const trackLibrary = { page: null, start: 0, loading: false, retryStart: 0, sort: 'startTime', direction: -1 };
 let monthlyRide = null;
+let openShareLibrary;
 let highlightsRequest = 0;
 let journalEntries = null, journalLoad = null, journalEditing = null, journalSaving = false;
 const trackDate = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -145,6 +146,7 @@ function showTab() {
   const hash = location.hash.slice(1);
   const current = tabs.includes(hash) ? hash : 'sync';
   if (current !== 'tracks' && byId('ride-terrain-dialog').open) byId('ride-terrain-dialog').close();
+  if (current !== 'tracks' && byId('ride-share-library').open) byId('ride-share-library').close();
   if (current !== 'tracks' && byId('ride-journal-dialog').open && !journalSaving) byId('ride-journal-dialog').close();
   if (current !== 'tracks' && monthlyRide) clearMonthlyRide();
   document.querySelectorAll('[data-panel]').forEach(node => { node.hidden = node.dataset.panel !== current; });
@@ -763,6 +765,7 @@ function drawTrack(tracks) {
 
 function clearRide() {
   if (byId('ride-terrain-dialog').open) byId('ride-terrain-dialog').close();
+  if (byId('ride-share-library').open) byId('ride-share-library').close();
   closeRideMap();
   closeRideExploration();
   model.ride = null;
@@ -997,7 +1000,11 @@ async function showRideHighlights(event) {
       if (record) {
         card.append(element('p', 'highlight-value', `${record.estimated ? '≈ ' : ''}${format(record.value)}`),
           element('p', 'muted', `${record.name} · ${trackDate.format(record.time)}`),
-          button('分析这趟骑行', () => openRide(record.id)));
+          button('分析这趟骑行', () => openRide(record.id)),
+          button('分享高光', () => showRideShare(async () => ({
+            id: record.id, ride: await api(`/api/ride/${encodeURIComponent(record.id)}?share=1`),
+            record: { title, value: `${record.estimated ? '≈ ' : ''}${format(record.value)}` },
+          }), 3)));
       } else card.append(element('p', 'muted', empty));
       return card;
     }));
@@ -1094,7 +1101,9 @@ function rideDuration(seconds) {
   return parts.map(value => String(value).padStart(2, '0')).join(':');
 }
 
-function renderRideComparison({ baseline, ride, match, secondsSaved }, drawRoutes, drawElevation) {
+function renderRideComparison(comparison, drawRoutes, drawElevation) {
+  const { baseline, ride, match, secondsSaved } = comparison;
+  byId('ride-compare-share').onclick = () => showRideShare(() => ({ ride, id: comparison.rideId, comparison }), 3);
   const descriptions = {
     same: '两趟路线接近，行进方向一致。',
     reverse: '两趟路线接近，行进方向相反。',
@@ -1153,10 +1162,12 @@ function openRideComparison() {
   clearRide();
   return perform(async () => {
     const [{ compareRides, drawComparisonRoutes, drawComparisonElevation }, ...rides] = await Promise.all([
-      import('/ride-compare.js'), ...ids.map(id => api(`/api/ride/${encodeURIComponent(id)}`)),
+      import('/ride-compare.js'), ...ids.map(id => api(`/api/ride/${encodeURIComponent(id)}?share=1`)),
     ]);
     if (location.hash !== '#tracks' || model.tracks.size !== 2 || !ids.every(id => model.tracks.has(id))) return;
-    renderRideComparison(compareRides(...rides), drawComparisonRoutes, drawComparisonElevation);
+    const comparison = compareRides(...rides);
+    comparison.rideId = ids[rides.indexOf(comparison.ride)];
+    renderRideComparison(comparison, drawComparisonRoutes, drawComparisonElevation);
   });
 }
 
@@ -1378,7 +1389,7 @@ function openRide(id) {
   clearRide();
   return perform(async () => {
     const [data, { drawRideCard }, { hasRideTerrain, drawRideTerrain }, { downloadCanvas, shareCanvas }] = await Promise.all([
-      api(`/api/ride/${encodeURIComponent(id)}`), import('/ride-card.js'), import('/ride-terrain.js'), import('/ride-image.js'),
+      api(`/api/ride/${encodeURIComponent(id)}?share=1`), import('/ride-card.js'), import('/ride-terrain.js'), import('/ride-image.js'),
     ]);
     if (model.tracks.size !== 1 || !model.tracks.has(id)) return;
     const hasTerrain = hasRideTerrain(data.route);
@@ -1408,6 +1419,17 @@ function openRide(id) {
     byId('ride-share-image').disabled = false;
     if (location.hash === '#tracks') byId(canMap ? 'ride-map-heading' : 'ride-analysis-heading').focus();
   });
+}
+
+async function showRideShare(loadContext, theme = 1) {
+  try {
+    const [context, { createRideShareLibrary }] = await Promise.all([loadContext(), import('/ride-share.js')]);
+    if (!context || location.hash !== '#tracks') return;
+    openShareLibrary ??= createRideShareLibrary(api);
+    openShareLibrary(context, theme);
+  } catch (error) {
+    notice(error.message || '无法打开分享图主题库。', 'error');
+  }
 }
 
 async function importFile(file, name = file.name) {
@@ -1654,6 +1676,13 @@ byId('ride-map-mode').addEventListener('change', () => model.ride?.refreshMapMod
 byId('ride-map-terrain').addEventListener('change', event => model.ride?.map?.setTerrain(event.target.checked));
 byId('ride-download').addEventListener('click', () => saveRideImage('downloadCanvas', 'ride-card', '骑行战报.png'));
 byId('ride-share-image').addEventListener('click', () => saveRideImage('shareCanvas', 'ride-card', '骑行战报.png'));
+byId('ride-share-library-open').addEventListener('click', () => {
+  const ride = model.ride;
+  if (ride) void showRideShare(() => model.ride === ride && { id: ride.id, ride: ride.data });
+});
+byId('ride-month-theme').addEventListener('click', () => {
+  void showRideShare(() => ({ month: byId('ride-month-input').value }), 5);
+});
 byId('ride-exploration-toggle').addEventListener('click', toggleRideExploration);
 byId('exploration-fit-all').addEventListener('click', () => model.ride?.explorationMap?.fitExploration());
 byId('exploration-download').addEventListener('click', () => saveRideImage('downloadCanvas', 'exploration-card', '骑行探索卡.png'));

@@ -164,6 +164,7 @@
           <h2 id="ride-compare-heading" tabindex="-1">同路线骑行对比</h2>
           <p id="ride-compare-status" role="status"></p>
           <p id="ride-compare-time" class="muted"></p>
+          <button type="button" id="ride-compare-share" class="button button-secondary">在分享图中打开</button>
           <table class="ride-compare-table" aria-label="两趟骑行指标">
             <thead><tr>
               <th scope="col">指标</th>
@@ -204,6 +205,7 @@
           <div class="action-row">
             <label class="field">活动月份<input id="ride-month-input" type="month" placeholder="例如 2026-11" min="1970-01"></label>
             <button type="button" id="ride-month-load" class="button button-primary">生成月报</button>
+            <button type="button" id="ride-month-theme" class="button button-secondary">月度分享图</button>
           </div>
           <p id="ride-month-status" class="muted" role="status"></p>
           <div id="ride-month-result" hidden>
@@ -309,6 +311,7 @@
           <div class="panel ride-share" aria-labelledby="ride-share-heading">
             <p class="eyebrow">RIDE EDITOR</p>
             <h2 id="ride-share-heading">骑行战报</h2>
+            <button type="button" id="ride-share-library-open" class="button button-primary">分享图 · 24 套主题</button>
             <p class="muted">选择样式和比例，预览后下载高清 PNG。</p>
             <div class="ride-share-form">
               <label class="field ride-title-field">战报标题<input id="ride-title" type="text" maxlength="24" placeholder="骑行战报"></label>
@@ -328,6 +331,44 @@
             </div>
           </div>
         </section>
+        <dialog id="ride-share-library" aria-labelledby="ride-share-library-title">
+          <div class="share-library-top">
+            <div><p class="eyebrow">RIDE SHARE</p><h2 id="ride-share-library-title">分享图主题库</h2></div>
+            <form method="dialog"><button class="button button-secondary" autofocus>关闭</button></form>
+          </div>
+          <div class="share-library-layout">
+            <div class="share-library-catalog">
+              <label class="field">主题分类<select id="ride-share-filter">
+                <option value="all">全部 24 套</option>
+                <option value="activity">单次骑行与路线</option>
+                <option value="performance">成绩与探索</option>
+                <option value="collection">月度、手账与纪念</option>
+              </select></label>
+              <p class="muted">缩略图是示例效果，右侧预览使用你的活动。</p>
+              <div id="ride-share-themes" class="share-library-themes" role="group" aria-label="选择分享图主题"></div>
+            </div>
+            <div class="share-library-preview">
+              <h3 id="ride-share-selected"></h3>
+              <div class="share-library-controls">
+                <label id="ride-share-title-field" class="field">图片标题<input id="ride-share-title" maxlength="24" placeholder="骑行记录"></label>
+                <label id="ride-share-scope-field" class="field">路线范围<select id="ride-share-scope">
+                  <option value="hidden">隐藏路线</option><option value="trimmed">隐藏起终点附近</option><option value="full">完整路线</option>
+                </select></label>
+                <label id="ride-share-month-field" class="field" hidden>活动月份<input id="ride-share-month" type="month" min="1970-01"></label>
+                <label id="ride-share-target-field" class="field" hidden>目标里程（km）<input id="ride-share-target" type="number" min="1" max="2000" step="1" value="100"></label>
+                <label id="ride-share-photo-field" class="field" hidden>本机合影（可选）<input id="ride-share-photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
+                <label id="ride-share-date-field" class="choice"><input id="ride-share-date" type="checkbox">显示活动日期</label>
+                <label id="ride-share-notes-field" class="choice" hidden><input id="ride-share-notes" type="checkbox">加入手账的标签与补给、路况笔记</label>
+              </div>
+              <p id="ride-share-library-status" class="muted" role="status"></p>
+              <div class="ride-preview"><canvas id="ride-share-library-canvas" width="1080" height="1224" aria-label="使用真实骑行数据生成的分享图预览" hidden></canvas></div>
+              <div class="action-row">
+                <button type="button" id="ride-share-library-download" class="button button-primary" disabled>下载 PNG</button>
+                <button type="button" id="ride-share-library-native" class="button button-secondary" disabled>分享图片</button>
+              </div>
+            </div>
+          </div>
+        </dialog>
         <dialog id="ride-journal-dialog" aria-labelledby="ride-journal-dialog-title">
           <form id="ride-journal-form">
             <h2 id="ride-journal-dialog-title">收藏路线</h2>

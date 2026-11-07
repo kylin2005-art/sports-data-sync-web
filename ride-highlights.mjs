@@ -31,6 +31,40 @@ export async function buildRideHighlightIndex(store) {
   await build;
 }
 
+export async function rideShareMonth(store, month, timeZone = 'UTC') {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month < '1970-01') {
+    throw new WorkspaceError(400, '请选择有效的活动月份。');
+  }
+  let calendar;
+  try {
+    calendar = new Intl.DateTimeFormat('en', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    throw new WorkspaceError(400, '月份时区无效。');
+  }
+  await buildRideHighlightIndex(store);
+  const days = new Set();
+  let rideCount = 0, distanceM = null, ascentM = null, estimatedDistance = false, estimatedAscent = false;
+  let representative = null;
+  for (const { id, payload } of store.rideHighlightRows(HIGHLIGHT_INDEX_VERSION)) {
+    const activity = JSON.parse(payload);
+    if (!activity) continue;
+    const { day, month: monthValue, year } = Object.fromEntries(calendar.formatToParts(activity.time).map(part => [part.type, part.value]));
+    if (`${year}-${monthValue}` !== month) continue;
+    days.add(Number(day));
+    rideCount++;
+    if (Number.isFinite(activity.distanceM) && activity.distanceM > 0) distanceM = (distanceM ?? 0) + activity.distanceM;
+    if (Number.isFinite(activity.ascentM)) ascentM = (ascentM ?? 0) + activity.ascentM;
+    estimatedDistance ||= activity.estimatedDistance === true;
+    estimatedAscent ||= activity.estimatedAscent === true;
+    if (!representative || activity.distanceM > representative.distanceM) {
+      representative = { id, distanceM: activity.distanceM };
+    }
+  }
+  return { month, days: [...days].sort((a, b) => a - b), rideCount, distanceM, ascentM, estimatedDistance, estimatedAscent,
+    representativeId: representative?.id ?? null };
+}
+
 export async function annualRideHighlights(store, year, timeZone = 'UTC') {
   if (!/^\d{4}$/.test(year) || year < '1970') throw new WorkspaceError(400, '请选择有效的活动年份。');
   let calendar;

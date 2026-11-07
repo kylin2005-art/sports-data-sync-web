@@ -212,13 +212,24 @@ function distanceBetween(left, right) {
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(Math.min(1, arc)));
 }
 
-function measureTrack(segments) {
+function measureTrack(segments, messages, includeShare) {
   let distanceM = 0;
+  const changes = includeShare ? timerChanges(messages) : [];
+  let speedEstimated = false;
   const measured = segments.map(points => points.map((point, index) => {
-    if (index) distanceM += distanceBetween(points[index - 1], point);
-    return { lat: point.lat, lon: point.lon, altitude: point.elevation ?? null, distanceM };
+    const previous = points[index - 1];
+    if (previous) distanceM += distanceBetween(previous, point);
+    const measuredPoint = { lat: point.lat, lon: point.lon, altitude: point.elevation ?? null, distanceM };
+    if (!includeShare) return measuredPoint;
+    const timer = timerIndex(changes, point.time);
+    const recorded = point.node ? gpxSensors(point.node).speedMps : point.speedMps;
+    const elapsed = previous?.time != null && point.time != null ? point.time - previous.time : null;
+    const continuous = previous && !changes[timer]?.paused && timerIndex(changes, previous.time) === timer;
+    const estimate = continuous && recorded == null ? estimatedSpeed(previous, point, elapsed) : null;
+    speedEstimated ||= estimate != null;
+    return { ...measuredPoint, speedMps: continuous ? recorded ?? estimate ?? null : null };
   }));
-  return { measured, distanceM };
+  return { measured, distanceM, speedEstimated };
 }
 
 function sample(items, limit) {
@@ -573,7 +584,7 @@ export function readRideSummary(file) {
   }
 }
 
-export function processRide({ id } = {}, workspace) {
+export function processRide({ id, includeShare = false } = {}, workspace) {
   if (typeof id !== 'string' || !/^[\w.:-]{1,160}$/.test(id)) throw new WorkspaceError(400, '请选择一个本地活动文件。');
   const file = workspace.store.file(id);
   if (!file) throw new WorkspaceError(404, '活动文件不存在，请刷新文件列表。');
@@ -583,16 +594,24 @@ export function processRide({ id } = {}, workspace) {
   if (segments.length > MAX_SEGMENTS) fail('活动轨迹分段过多。');
   const session = rideSession(messages);
   const startTime = rideStartTime(session, messages, segments);
-  const { measured, distanceM } = measureTrack(segments);
+  const { measured, distanceM, speedEstimated } = measureTrack(segments, messages, includeShare);
   const { metrics, estimated } = rideMetrics(format, session, segments, distanceM);
-  const route = normalizeRoute(sampleSegments(measured));
-  const trimmedRoute = normalizeRoute(privateRoute(measured, distanceM));
+  const full = sampleSegments(measured), trimmed = privateRoute(measured, distanceM);
+  const route = normalizeRoute(full), trimmedRoute = normalizeRoute(trimmed);
   const elevation = elevationProfile(measured);
   if (!startTime && !route.length && Object.values(metrics).every(value => value === null)) {
     fail('所选文件没有可用的活动指标或轨迹。');
   }
-  return { name: file.name || file.fileName, format, startTime, metrics, estimated, route, trimmedRoute, elevation,
+  const result = { name: file.name || file.fileName, format, startTime, metrics, estimated, route, trimmedRoute, elevation,
     ...rideMap(file, segments, messages) };
+  if (!includeShare) return result;
+  const speeds = points => points.map(segment => segment.map(point => point.speedMps));
+  const shareMetrics = {};
+  if (metrics.ascentM == null) shareMetrics.ascentM = estimatedAscent(segments);
+  if (metrics.avgSpeedMps == null && metrics.distanceM > 0 && metrics.durationSeconds > 0) {
+    shareMetrics.avgSpeedMps = metrics.distanceM / metrics.durationSeconds;
+  }
+  return { ...result, shareMetrics, routeSpeeds: speeds(full), trimmedRouteSpeeds: speeds(trimmed), shareSpeedEstimated: speedEstimated };
 }
 
 export async function processTracks({ ids, merge = false } = {}, workspace) {

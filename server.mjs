@@ -20,6 +20,9 @@ const workspaceAssets = new Map([
   ['/ride-card.js', ['ride-card.js', 'text/javascript; charset=utf-8']],
   ['/ride-terrain.js', ['ride-terrain.js', 'text/javascript; charset=utf-8']],
   ['/ride-image.js', ['ride-image.js', 'text/javascript; charset=utf-8']],
+  ['/ride-share.js', ['ride-share.js', 'text/javascript; charset=utf-8']],
+  ['/ride-share-art.js', ['ride-share-art.js', 'text/javascript; charset=utf-8']],
+  ['/ride-share-data.js', ['ride-share-data.js', 'text/javascript; charset=utf-8']],
   ['/ride-exploration.js', ['ride-exploration.js', 'text/javascript; charset=utf-8']],
   ['/ride-compare.js', ['ride-compare.js', 'text/javascript; charset=utf-8']],
   ['/workspace-icon.svg', ['workspace-icon.svg', 'image/svg+xml']],
@@ -29,6 +32,10 @@ const workspaceAssets = new Map([
   ['/ui/ride-map.css', ['ui/ride-map.css', 'text/css; charset=utf-8']],
   ['/ui/ride-map-worker.js', ['ui/ride-map-worker.js', 'text/javascript; charset=utf-8']],
 ]);
+for (let theme = 1; theme <= 24; theme++) {
+  const path = `ride-theme-previews/${String(theme).padStart(2, '0')}.webp`;
+  workspaceAssets.set(`/${path}`, [path, 'image/webp']);
+}
 const rideMapOrigins = 'https://tiles.openfreemap.org https://tiles.mapterhorn.com';
 const garminDiAssets = new Map([
   ['/garmin-di', ['garmin-di.html', 'text/html; charset=utf-8']],
@@ -266,6 +273,11 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
         }
       }
       if (workspace && request.method === 'GET') {
+        if (path === '/api/ride-share/month') {
+          const { rideShareMonth } = await import('./ride-highlights.mjs');
+          return json(response, 200, await rideShareMonth(workspace.store,
+            url.searchParams.get('month'), url.searchParams.get('tz') ?? 'UTC'));
+        }
         if (path === '/api/ride-highlights') {
           const { annualRideHighlights } = await import('./ride-highlights.mjs');
           return json(response, 200, await annualRideHighlights(workspace.store,
@@ -283,7 +295,9 @@ export function createWorkspaceHandler(garmin, workspaceFactory, { diOrigin } = 
           return json(response, 200, await exploreRide(explorationId));
         }
         const rideId = path.match(/^\/api\/ride\/([a-f0-9]{64})$/)?.[1];
-        if (rideId) return json(response, 200, await (await import('./tracks.mjs')).processRide({ id: rideId }, workspace));
+        if (rideId) return json(response, 200, await (await import('./tracks.mjs')).processRide({
+          id: rideId, includeShare: url.searchParams.get('share') === '1',
+        }, workspace));
         if (path === '/api/track-library') return json(response, 200, await trackLibrary(url.searchParams));
         if (path === '/api/workspace') {
           const state = workspace.state();
