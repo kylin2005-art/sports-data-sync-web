@@ -674,7 +674,7 @@ export class SyncWorkspace {
       return 'skipped';
     }
     if (entry.blocked) {
-      this.#log(`${activity.name} → ${this.platforms.get(target).name}：曾用其他连接发送，先在记录中心核对，已跳过。`);
+      this.#log(`${activity.name} → ${this.platforms.get(target).name}：曾用其他连接发送，先在同步记录核对，已跳过。`);
       return 'skipped';
     }
     if (old && durable.has(old.status)) {
@@ -720,7 +720,7 @@ export class SyncWorkspace {
       if (!validFit(outbound.data)) throw new WorkspaceError(422, 'FIT 完整性校验失败，无法准备 Keep 导入。');
       this.store.saveReceipt(key, { ...receipt, fileId: file.fileId, status: 'guided',
         message: '请下载 FIT，在手机 Keep App 的「运动数据文件导入」中选择文件。' });
-      this.#log(`${activity.name} → Keep：FIT 已准备好，请在记录中心下载并手动导入。`);
+      this.#log(`${activity.name} → Keep：FIT 已准备好，请在同步记录下载并手动导入。`);
       return 'guided';
     }
     let attempted = false;

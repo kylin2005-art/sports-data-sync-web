@@ -41,6 +41,8 @@
   padding: 24px 16px 18px;
   background: #fbfdff;
   border-right: 1px solid var(--workspace-line);
+  max-height: 100dvh;
+  overflow-y: auto;
 }
 
 .workspace-brand {
@@ -68,6 +70,7 @@
 .workspace-brand small { display: block; font-size: 12px; color: var(--workspace-muted); margin-top: 3px; }
 .workspace-menu-caption { color: var(--workspace-muted); font-size: 12px; padding: 0 12px; margin: 13px 0 3px; }
 .workspace-menu { display: grid; gap: 5px; }
+.workspace-menu-group { display: grid; gap: 3px; }
 .workspace-menu a {
   position: relative;
   display: flex;
@@ -206,6 +209,8 @@
     grid-area: auto;
     position: static;
     min-height: 0;
+    max-height: none;
+    overflow: visible;
     padding: 12px 15px 10px;
     border: 0;
     border-bottom: 1px solid var(--workspace-line);
@@ -213,9 +218,11 @@
   .workspace-brand { padding: 0 0 3px; }
   .workspace-brand-icon { width: 34px; height: 34px; }
   .workspace-brand-icon svg { width: 25px; height: 25px; }
-  .workspace-menu-caption, .workspace-environment { display: none; }
-  .workspace-menu { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; }
-  .workspace-menu a { flex-direction: column; justify-content: center; gap: 2px; padding: 5px 1px; font-size: 11px; white-space: nowrap; }
+  .workspace-environment { display: none; }
+  .workspace-menu { gap: 3px; }
+  .workspace-menu-group { grid-template-columns: 55px repeat(4, minmax(0, 1fr)); align-items: center; }
+  .workspace-menu-caption { margin: 0; padding: 0; }
+  .workspace-menu a { justify-content: center; min-height: 40px; gap: 4px; padding: 5px 1px; font-size: 12px; white-space: nowrap; }
   .workspace-menu a[aria-current="page"]::before { display: none; }
   .workspace-menu svg { width: 17px; height: 17px; }
   .workspace-topbar, .workspace > main, .workspace > footer { grid-column: 1; padding-inline: 16px; }
@@ -224,6 +231,7 @@
 }
 
 @media (max-width: 540px) {
+  .workspace-menu svg { display: none; }
   .workspace-topbar { flex-wrap: wrap; }
   .workspace-topbar-controls { margin-inline-start: auto; }
   .workspace-current-user { max-width: min(13rem, 46vw); }

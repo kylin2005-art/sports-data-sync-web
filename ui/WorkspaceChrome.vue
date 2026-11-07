@@ -2,14 +2,28 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ElCard, ElTag } from 'element-plus';
 
-const views = [
-  { id: 'sync', title: '数据同步', icon: 'M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4' },
-  { id: 'accounts', title: '平台账号', icon: 'M15 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM5 20v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2' },
-  { id: 'jobs', title: '定时任务', icon: 'M12 7v5l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
-  { id: 'records', title: '记录中心', icon: 'M5 4h14v16H5zM8 8h8M8 12h8M8 16h5' },
-  { id: 'tracks', title: '轨迹工具', icon: 'M5 17l5-8 5 5 4-7m-12 10a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm14-10a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z' },
+const groups = [
+  { title: '同步管理', views: [
+    { id: 'sync', title: '数据同步', icon: 'M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4' },
+    { id: 'jobs', title: '定时任务', icon: 'M12 7v5l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
+    { id: 'records', title: '同步记录', icon: 'M5 4h14v16H5zM8 8h8M8 12h8M8 16h5' },
+    { id: 'workouts', title: '训练课表', icon: 'M4 6h16v14H4zM7 3v6m10-6v6M4 11h16m-12 4h3m3 0h3' },
+  ] },
+  { title: '骑行', views: [
+    { id: 'tracks', title: '骑行档案', icon: 'M3 7h7l2 2h9v11H3zM3 7V4h8l2 2h6v3' },
+    { id: 'analysis', title: '骑行分析', icon: 'M3 19h18M7 15l4-6 4 3 5-7' },
+    { id: 'routes', title: '路线手账', icon: 'M5 17l5-8 5 5 4-7m-12 10a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm14-10a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z' },
+    { id: 'share', title: '分享图', icon: 'M4 4h16v16H4zM4 16l5-5 4 4 3-3 4 4M15 8h.01' },
+  ] },
+  { title: '设置', views: [
+    { id: 'accounts', title: '平台账号', icon: 'M15 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM5 20v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2' },
+  ] },
 ];
-const readView = () => views.find(view => view.id === location.hash.slice(1)) ?? views[0];
+const views = Object.fromEntries(groups.flatMap(group => group.views.map(view => [view.id, { ...view, group: group.title }])));
+const readView = () => {
+  const id = location.hash.slice(1);
+  return Object.hasOwn(views, id) ? views[id] : views.sync;
+};
 const active = ref(readView());
 const overview = ref(window.sportsSyncOverview ?? {});
 const logoutPending = ref(false);
@@ -29,9 +43,9 @@ const summary = computed(() => {
     ? [`已确认 ${run.confirmed}`, `跳过 ${run.skipped}`, run.unconfirmed && `待核对 ${run.unconfirmed}`, run.guided && `待手动导入 ${run.guided}`, run.failed && `失败 ${run.failed}`].filter(Boolean).join(' · ')
     : '同步任务启动后显示进度';
   return [
-    { name: '平台连接', value: connected == null ? '—' : `${connected} / ${platforms}`, hint: '已配置、保存或验证', icon: views[1].icon },
-    { name: '本次选中', value: selected == null ? '—' : `${selected} 条`, hint: activityCount == null ? '读取活动后可勾选' : `已读取 ${activityCount} 条活动`, icon: views[3].icon },
-    { name: '运行状态', value: runNames[run?.status] ?? '待开始', hint: runHint, icon: views[2].icon },
+    { name: '平台连接', value: connected == null ? '—' : `${connected} / ${platforms}`, hint: '已配置、保存或验证', icon: views.accounts.icon },
+    { name: '本次选中', value: selected == null ? '—' : `${selected} 条`, hint: activityCount == null ? '读取活动后可勾选' : `已读取 ${activityCount} 条活动`, icon: views.records.icon },
+    { name: '运行状态', value: runNames[run?.status] ?? '待开始', hint: runHint, icon: views.jobs.icon },
   ];
 });
 
@@ -73,18 +87,20 @@ onUnmounted(() => {
       </span>
       <span><strong>运动数据同步</strong><small>同步工作台</small></span>
     </a>
-    <p class="workspace-menu-caption">工作区</p>
     <nav class="workspace-menu" aria-label="工作台">
-      <a v-for="view in views" :key="view.id" :href="'#' + view.id" :data-tab="view.id"
-         :aria-current="active.id === view.id ? 'page' : undefined">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path :d="view.icon" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>{{ view.title }}</span>
-      </a>
+      <div v-for="group in groups" :key="group.title" class="workspace-menu-group" role="group" :aria-label="group.title">
+        <p class="workspace-menu-caption" aria-hidden="true">{{ group.title }}</p>
+        <a v-for="view in group.views" :key="view.id" :href="'#' + view.id" :data-tab="view.id"
+           :aria-current="active.id === view.id ? 'page' : undefined">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path :d="view.icon" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>{{ view.title }}</span>
+        </a>
+      </div>
     </nav>
     <div class="workspace-environment"><span aria-hidden="true"></span>{{ overview.viewer?.personal ? '个人工作区' : overview.viewer ? '邀请制工作区' : '本机工作区' }}</div>
   </aside>
   <header class="workspace-topbar">
-    <div class="workspace-breadcrumb"><span>工作台</span><span aria-hidden="true">/</span><strong>{{ active.title }}</strong></div>
+    <div class="workspace-breadcrumb"><span>{{ active.group }}</span><span aria-hidden="true">/</span><strong>{{ active.title }}</strong></div>
     <div class="workspace-topbar-controls">
       <ElTag :type="service.type" effect="light" round>
         <span class="workspace-service-dot" aria-hidden="true"></span>{{ service.label }}

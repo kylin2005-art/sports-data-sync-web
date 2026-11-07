@@ -1,7 +1,10 @@
 'use strict';
 
 const byId = id => document.getElementById(id);
-const tabs = ['sync', 'accounts', 'jobs', 'records', 'tracks'];
+const panels = [...document.querySelectorAll('[data-panel]')];
+const tabs = new Set(panels.map(panel => panel.dataset.panel));
+const syncTabs = new Set(['sync', 'jobs', 'records']);
+let activeTab = 'sync';
 const statusNames = {
   sending: '等待确认', accepted: '平台已接收', unconfirmed: '待核对', confirmed: '已确认',
   duplicate: '平台判定重复', guided: '待手动导入', failed: '失败', released: '允许重试',
@@ -23,7 +26,7 @@ const platformGuides = {
     link: ['Wahoo 授权文档', 'https://cloud-api.wahooligan.com/#authorization'] },
   intervals_icu: { note: '在 Intervals.icu 设置底部的 Developer Settings 生成个人 API Key，再回工作台保存。',
     link: ['Intervals.icu 设置', 'https://intervals.icu/settings'] },
-  keep: { note: '读取骑行用手机号和密码连接。作为目标时，从「记录中心」下载准备好的 FIT，再到手机 Keep App 手动导入。' },
+  keep: { note: '读取骑行用手机号和密码连接。作为目标时，从「同步记录」下载准备好的 FIT，再到手机 Keep App 手动导入。' },
   komoot: { note: '使用 Komoot 邮箱和密码登录。手动配置时使用同一邮箱和已有登录 Token。' },
   suunto: { note: '在 Suunto API Zone 订阅 Developer API 并完成 OAuth 授权，再填入 Access Token 和 Subscription Key。令牌过期后更换。',
     link: ['Suunto 开发者接入指南', 'https://apizone.suunto.com/how-to-start'] },
@@ -44,6 +47,7 @@ const model = {
 const trackLibrary = { page: null, start: 0, loading: false, retryStart: 0, sort: 'startTime', direction: -1, filters: new URLSearchParams() };
 let monthlyRide = null;
 let openShareLibrary;
+let shareTab;
 let highlightsRequest = 0;
 let rideReportRequest = 0;
 let journalEntries = null, journalLoad = null, journalEditing = null, journalSaving = false;
@@ -145,19 +149,22 @@ async function perform(action) {
 
 function showTab() {
   const hash = location.hash.slice(1);
-  const current = tabs.includes(hash) ? hash : 'sync';
-  if (current !== 'tracks' && byId('ride-terrain-dialog').open) byId('ride-terrain-dialog').close();
-  if (current !== 'tracks' && byId('ride-share-library').open) byId('ride-share-library').close();
-  if (current !== 'tracks' && byId('ride-journal-dialog').open && !journalSaving) byId('ride-journal-dialog').close();
-  if (current !== 'tracks' && monthlyRide) clearMonthlyRide();
-  document.querySelectorAll('[data-panel]').forEach(node => { node.hidden = node.dataset.panel !== current; });
+  const current = tabs.has(hash) ? hash : 'sync';
+  if (current !== activeTab) window.scrollTo(0, 0);
+  activeTab = current;
+  if (current !== 'analysis' && byId('ride-terrain-dialog').open) byId('ride-terrain-dialog').close();
+  if (current !== shareTab && byId('ride-share-library').open) byId('ride-share-library').close();
+  if (current !== 'routes' && current !== 'analysis' && byId('ride-journal-dialog').open && !journalSaving) byId('ride-journal-dialog').close();
+  if (current !== 'share' && monthlyRide) clearMonthlyRide();
+  panels.forEach(node => { node.hidden = node.dataset.panel !== current; });
   document.querySelectorAll('[data-tab]').forEach(node => {
     if (node.dataset.tab === current) node.setAttribute('aria-current', 'page');
     else node.removeAttribute('aria-current');
   });
   if (current === 'tracks' && !trackLibrary.page) loadTrackLibrary();
-  if (current === 'tracks' && !journalEntries) loadRideJournal();
-  if (current === 'tracks' && byId('ride-report').open) loadRideReport();
+  if (current === 'routes' && !journalEntries) loadRideJournal();
+  if (current === 'analysis' && byId('ride-report').open) loadRideReport();
+  byId('run-panel').hidden = !model.run || !syncTabs.has(current);
 }
 
 function renderSelect(select, selected) {
@@ -222,6 +229,7 @@ function renderControls() {
   byId('stop').hidden = !running();
   byId('stop').disabled = model.run?.stopRequested === true;
   byId('analyze-ride').disabled = model.working || model.tracks.size !== 1;
+  byId('share-selected-ride').disabled = byId('share-current-ride').disabled = byId('analyze-ride').disabled;
   byId('compare-ride').disabled = model.working || model.tracks.size !== 2;
   byId('draw-track').disabled = model.working || !model.tracks.size;
   byId('merge-track').disabled = model.working || model.tracks.size < 2;
@@ -599,7 +607,7 @@ async function loadTrackLibrary(start = trackLibrary.start) {
     trackLibrary.start = start;
     renderTrackRows();
     status.textContent = page.files.length ? `第 ${start + 1}–${start + page.files.length} 条 · 共 ${page.total} 条${filtered ? '符合条件' : ''}`
-      : filtered ? '没有符合条件的骑行，可调整或清除筛选。' : '先在记录中心导入或下载活动文件。';
+      : filtered ? '没有符合条件的骑行，可调整或清除筛选。' : '请导入 FIT / GPX，或先从运动平台同步活动。';
   } catch (error) {
     status.textContent = error instanceof TypeError ? '无法连接工作台服务，请重试。' : error.message;
     retry.hidden = false;
@@ -706,7 +714,7 @@ function renderRunHelp(run) {
 
 function renderRun() {
   const run = model.run;
-  byId('run-panel').hidden = !run;
+  byId('run-panel').hidden = !run || !syncTabs.has(activeTab);
   if (run) {
     const status = { running: '运行中', finished: run.failed ? '已结束，有失败' : '已结束', stopped: '已停止', failed: '任务失败' }[run.status];
     const coverage = Number.isSafeInteger(run.scanned) ? ` · 扫描 ${run.scanned} 条${run.activityType === 'cycling' ? ` · 骑行 ${run.matched} 条 · 类型不明 ${run.unclassified} 条` : ''}` : '';
@@ -1307,13 +1315,14 @@ function renderRideComparison(comparison, drawRoutes, drawElevation) {
 function openRideComparison() {
   const ids = [...model.tracks];
   if (ids.length !== 2 || model.working) return;
+  if (location.hash !== '#analysis') location.hash = '#analysis';
   byId('ride-compare').hidden = true;
   clearRide();
   return perform(async () => {
     const [{ compareRides, drawComparisonRoutes, drawComparisonElevation }, ...rides] = await Promise.all([
       import('/ride-compare.js'), ...ids.map(id => api(`/api/ride/${encodeURIComponent(id)}?share=1`)),
     ]);
-    if (location.hash !== '#tracks' || model.tracks.size !== 2 || !ids.every(id => model.tracks.has(id))) return;
+    if (location.hash !== '#analysis' || model.tracks.size !== 2 || !ids.every(id => model.tracks.has(id))) return;
     const comparison = compareRides(...rides);
     comparison.rideId = ids[rides.indexOf(comparison.ride)];
     renderRideComparison(comparison, drawComparisonRoutes, drawComparisonElevation);
@@ -1475,8 +1484,9 @@ const journalPresets = () => [...document.querySelectorAll('input[name="journal-
 
 async function openRideJournal(id, title) {
   if (journalSaving || byId('ride-journal-dialog').open) return;
+  const view = location.hash;
   if (!journalEntries || journalLoad) await loadRideJournal();
-  if (!journalEntries || location.hash !== '#tracks' || byId('ride-journal-dialog').open) return;
+  if (!journalEntries || location.hash !== view || byId('ride-journal-dialog').open) return;
   const entry = journalEntries.find(item => item.id === id);
   const presets = journalPresets();
   const tags = entry?.tags ?? [];
@@ -1534,13 +1544,13 @@ function openRide(id) {
     model.tracks = new Set([id]);
     renderTrackRows();
   }
-  if (location.hash !== '#tracks') location.hash = '#tracks';
+  if (location.hash !== '#analysis') location.hash = '#analysis';
   clearRide();
   return perform(async () => {
     const [data, { drawRideCard }, { hasRideTerrain, drawRideTerrain }, { downloadCanvas, shareCanvas }] = await Promise.all([
       api(`/api/ride/${encodeURIComponent(id)}?share=1`), import('/ride-card.js'), import('/ride-terrain.js'), import('/ride-image.js'),
     ]);
-    if (model.tracks.size !== 1 || !model.tracks.has(id)) return;
+    if (location.hash !== '#analysis' || model.tracks.size !== 1 || !model.tracks.has(id)) return;
     const hasTerrain = hasRideTerrain(data.route);
     model.ride = { id, data, drawCard: drawRideCard, drawTerrain: drawRideTerrain, hasRideTerrain, hasTerrain,
       cardRouteView: '3d', downloadCanvas, shareCanvas };
@@ -1566,19 +1576,28 @@ function openRide(id) {
     refreshRideCard();
     byId('ride-download').disabled = false;
     byId('ride-share-image').disabled = false;
-    if (location.hash === '#tracks') byId(canMap ? 'ride-map-heading' : 'ride-analysis-heading').focus();
+    byId(canMap ? 'ride-map-heading' : 'ride-analysis-heading').focus();
   });
 }
 
 async function showRideShare(loadContext, theme = 1) {
+  const view = location.hash;
   try {
     const [context, { createRideShareLibrary }] = await Promise.all([loadContext(), import('/ride-share.js')]);
-    if (!context || location.hash !== '#tracks') return;
+    if (!context || location.hash !== view) return;
     openShareLibrary ??= createRideShareLibrary(api);
+    shareTab = view.slice(1);
     openShareLibrary(context, theme);
   } catch (error) {
-    notice(error.message || '无法打开分享图主题库。', 'error');
+    if (location.hash === view) notice(error.message || '无法打开分享图主题库。', 'error');
   }
+}
+
+function shareSelectedRide() {
+  if (model.working || model.tracks.size !== 1) return;
+  const id = model.tracks.values().next().value;
+  if (location.hash !== '#share') location.hash = '#share';
+  void showRideShare(async () => ({ id, ride: model.ride?.id === id ? model.ride.data : await api(`/api/ride/${encodeURIComponent(id)}?share=1`) }));
 }
 
 async function importFile(file, name = file.name) {
@@ -1656,7 +1675,7 @@ byId('select-all').addEventListener('click', () => {
 byId('download-test').addEventListener('click', () => perform(async () => {
   const result = await api('/api/file-test', { source: model.source, id: [...model.selected][0] });
   await refresh();
-  notice(`已下载 ${result.fileName}，可在记录中心查看。`, 'success');
+  notice(`已下载 ${result.fileName}，可在骑行档案查看。`, 'success');
 }));
 byId('run').addEventListener('click', () => startRun({ source: model.source, targets: [...model.targets], ids: [...model.selected] }));
 byId('setup-full-ride').addEventListener('click', () => {
@@ -1790,13 +1809,15 @@ byId('merge-track').addEventListener('click', () => perform(async () => {
   const result = await api('/api/tracks', { ids: [...model.tracks], merge: true });
   drawTrack(result.tracks);
   await refresh();
-  notice(result.message || `已合并 ${result.count} 个文件，GPX 已存入记录中心。`, 'success');
+  notice(result.message || `已合并 ${result.count} 个文件，GPX 已存入骑行档案。`, 'success');
 }));
 byId('track-png').addEventListener('click', () => {
   import('/ride-image.js').then(({ downloadCanvas }) => downloadCanvas(byId('track-canvas'), '运动轨迹.png'))
     .catch(() => notice('无法生成 PNG 图片，请重试。', 'error'));
 });
 byId('analyze-ride').addEventListener('click', () => openRide(model.tracks.values().next().value));
+byId('share-selected-ride').addEventListener('click', shareSelectedRide);
+byId('share-current-ride').addEventListener('click', shareSelectedRide);
 byId('ride-journal-refresh').addEventListener('click', loadRideJournal);
 byId('ride-journal-filter').addEventListener('change', renderRideJournal);
 byId('ride-journal-add').addEventListener('click', () => {
@@ -1852,7 +1873,7 @@ byId('exploration-share').addEventListener('click', () => saveRideImage('shareCa
 const monthToday = new Date();
 byId('ride-report-month').value = `${monthToday.getFullYear()}-${String(monthToday.getMonth() + 1).padStart(2, '0')}`;
 byId('ride-report').addEventListener('toggle', event => {
-  if (event.currentTarget.open && location.hash === '#tracks') loadRideReport();
+  if (event.currentTarget.open && location.hash === '#analysis') loadRideReport();
 });
 byId('ride-report-month').addEventListener('change', loadRideReport);
 byId('ride-report-refresh').addEventListener('click', loadRideReport);
@@ -1877,7 +1898,7 @@ byId('save-record').addEventListener('click', () => perform(async () => {
   const gpx = `<?xml version="1.0" encoding="UTF-8"?><gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1" creator="Sports Data Sync"><trk><name>${name}</name><trkseg>${points}</trkseg></trk></gpx>`;
   await importFile(new Blob([gpx]), `${name}.gpx`);
   recording = null;
-  updateRecorder('定位记录已保存，可在记录中心下载。');
+  updateRecorder('定位记录已保存，可在骑行档案下载。');
   await refresh();
 }));
 window.addEventListener('pagehide', () => stopRecording());
@@ -1885,6 +1906,10 @@ window.addEventListener('pageshow', event => {
   if (event.persisted && model.viewer) location.reload();
 });
 window.addEventListener('hashchange', showTab);
+document.querySelector('.skip-link').addEventListener('click', event => {
+  event.preventDefault();
+  byId('main').focus();
+});
 document.querySelector('.skip-link').addEventListener('click', event => {
   event.preventDefault();
   byId('main').focus();

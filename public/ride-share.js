@@ -109,7 +109,7 @@ export function createRideShareLibrary(api) {
     })) byId(`${field}-field`).hidden = !visible;
     setReady(false);
     if (!ride && !monthly) {
-      status.textContent = '这套主题需要一条骑行。请在轨迹工具选择活动并打开「分享图」。';
+      status.textContent = '这套主题需要一条骑行。请在骑行档案选择活动，再点「生成分享图」。';
       return;
     }
     if (id === 24 && (!controls.target.validity.valid || !Number.isFinite(target))) {

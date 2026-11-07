@@ -22,8 +22,9 @@
       <span class="local-badge"><span class="dot" aria-hidden="true"></span>本机版</span>
     </header>
     <nav class="workspace-nav" aria-label="工作台">
-      <a href="#sync" data-tab="sync">数据同步</a><a href="#accounts" data-tab="accounts">平台账号</a>
-      <a href="#jobs" data-tab="jobs">定时任务</a><a href="#records" data-tab="records">记录中心</a><a href="#tracks" data-tab="tracks">轨迹工具</a>
+      <a href="#sync" data-tab="sync">数据同步</a><a href="#jobs" data-tab="jobs">定时任务</a><a href="#records" data-tab="records">同步记录</a><a href="#workouts" data-tab="workouts">训练课表</a>
+      <a href="#tracks" data-tab="tracks">骑行档案</a><a href="#analysis" data-tab="analysis">骑行分析</a>
+      <a href="#routes" data-tab="routes">路线手账</a><a href="#share" data-tab="share">分享图</a><a href="#accounts" data-tab="accounts">平台账号</a>
     </nav>
     </div>
     <main id="main" tabindex="-1">
@@ -64,7 +65,7 @@
         <div class="workspace-intro"><div><p class="eyebrow">CONNECTIONS</p><h1>平台账号</h1><p id="accounts-intro" class="intro-copy">展开平台卡片里的「接入说明」，按步骤连接账号。网页授权显示「已保存」后，可以关闭平台官网窗口。</p></div><div id="garmin-authorization"></div></div>
         <div id="accounts" class="platform-grid"></div>
         <details class="panel space"><summary>查看全部平台的接入状态与文件导入方式</summary><div id="coverage" class="coverage"></div>
-          <p class="muted">从平台导出的 FIT 或 GPX 可以先在<a href="#records">记录中心</a>导入，再以「本机文件」作为来源同步。</p>
+          <p class="muted">从平台导出的 FIT 或 GPX 可以先在<a href="#tracks">骑行档案</a>导入，再以「本机文件」作为来源同步。</p>
         </details>
       </section>
 
@@ -86,7 +87,11 @@
           <div class="action-row"><button type="submit" class="button button-primary">保存任务</button><button type="button" id="job-reset" class="button button-quiet" hidden>取消编辑</button></div>
         </form>
         <div class="panel space"><h2>已保存的任务</h2><div id="job-list" class="record-list"></div></div>
-        <div class="panel space">
+      </section>
+
+      <section data-panel="workouts" hidden>
+        <div class="workspace-intro"><div><p class="eyebrow">TRAINING PLANS</p><h1>训练课表</h1><p class="intro-copy">读取 Intervals.icu 的计划课表，下载 FIT 或推送到支持的设备平台。</p></div></div>
+        <div class="panel">
           <h2>Intervals.icu 训练课表</h2>
           <p class="muted">下载或推送计划中的训练。课表与已完成的运动记录分开保存。</p>
           <form id="workout-form">
@@ -101,19 +106,14 @@
       </section>
 
       <section data-panel="records" hidden>
-        <div class="workspace-intro"><div><p class="eyebrow">ACTIVITY LIBRARY</p><h1>记录中心</h1><p class="intro-copy">下载原始文件，查看每条活动发送到各平台后的状态。</p></div></div>
-        <div class="panel">
-          <div class="panel-top"><h2>活动文件</h2><label class="button button-secondary upload-label">导入 FIT / GPX<input id="file-input" type="file" multiple accept=".fit,.gpx" class="sr-only"></label></div>
-          <label class="field search-field">筛选文件<input id="file-filter" type="search" placeholder="搜索活动名称或文件名"></label>
-          <div id="file-list" class="record-list"></div>
-        </div>
+        <div class="workspace-intro"><div><p class="eyebrow">SYNC HISTORY</p><h1>同步记录</h1><p class="intro-copy">按目标平台查看同步结果、待核对回执和失败原因。</p></div></div>
         <div class="panel space"><h2>同步记录</h2><div id="history" class="record-list"></div></div>
       </section>
 
       <section data-panel="tracks" hidden>
-        <div class="workspace-intro"><div><p class="eyebrow">ROUTE TOOLS</p><h1>轨迹工具</h1><p class="intro-copy">选择一条活动做骑行分析和分享图，或选择多条预览和合并轨迹。</p></div></div>
+        <div class="workspace-intro"><div><p class="eyebrow">ACTIVITY LIBRARY</p><h1>骑行档案</h1><p class="intro-copy">导入 FIT / GPX，按日期和骑行指标查找活动。</p></div></div>
         <div class="panel">
-          <h2 id="track-library-heading">骑行轨迹</h2>
+          <div class="panel-top"><h2 id="track-library-heading">骑行轨迹</h2><label class="button button-secondary upload-label">导入 FIT / GPX<input id="file-input" type="file" multiple accept=".fit,.gpx" class="sr-only"></label></div>
           <p class="muted" id="track-table-help">点表头可排序当前页。≈ 表示估算，— 表示文件没有可用数据。</p>
           <details class="track-filter">
             <summary>筛选骑行轨迹<span id="track-filter-active" hidden> · 已筛选</span></summary>
@@ -181,12 +181,27 @@
           <div class="action-row">
             <span id="track-selection" class="muted" aria-live="polite">已选 0 条</span>
             <button type="button" id="track-clear" class="button button-quiet" hidden>清空选择</button>
-            <button type="button" id="analyze-ride" class="button button-primary" disabled>分析并生成战报</button>
+            <button type="button" id="analyze-ride" class="button button-primary" disabled>分析骑行</button>
+            <button type="button" id="share-selected-ride" class="button button-secondary" disabled>生成分享图</button>
             <button type="button" id="compare-ride" class="button button-secondary" disabled>对比两趟骑行</button>
             <button type="button" id="draw-track" class="button button-secondary" disabled>预览轨迹</button>
             <button type="button" id="merge-track" class="button button-secondary" disabled>合并为 GPX</button>
           </div>
         </div>
+        <div class="panel space" id="track-preview" hidden>
+          <h2>轨迹预览</h2><p id="track-info" class="muted">可叠加多条轨迹并导出透明贴纸。</p>
+          <canvas id="track-canvas" width="900" height="600" aria-label="轨迹图"></canvas>
+          <button type="button" id="track-png" class="button button-secondary" disabled>导出透明 PNG</button>
+        </div>
+        <details class="panel space track-filter">
+          <summary>近期原始文件</summary>
+          <label class="field search-field">筛选文件<input id="file-filter" type="search" placeholder="搜索活动名称或文件名"></label>
+          <div id="file-list" class="record-list"></div>
+        </details>
+      </section>
+
+      <section data-panel="analysis" hidden>
+        <div class="workspace-intro"><div><p class="eyebrow">RIDE ANALYSIS</p><h1>骑行分析</h1><p class="intro-copy">回顾月报和年度纪录，或从骑行档案打开单次分析与路线对比。</p></div></div>
         <section class="panel space" aria-labelledby="ride-report-heading">
           <p class="eyebrow">MONTHLY RIDE REPORT</p>
           <h2 id="ride-report-heading">自动骑行月报与进步分析</h2>
@@ -210,16 +225,16 @@
             </div>
           </details>
         </section>
-        <section class="panel space" aria-labelledby="ride-journal-heading">
-          <p class="eyebrow">ROUTE JOURNAL</p>
-          <h2 id="ride-journal-heading">路线收藏与骑行手账</h2>
-          <p class="muted">从单次骑行分析收藏路线。约骑前可以按标签查找，再查看补水点和路况。</p>
-          <div class="action-row">
-            <label class="field">按标签筛选<select id="ride-journal-filter"><option value="">全部标签</option></select></label>
-            <button type="button" id="ride-journal-refresh" class="button button-quiet">刷新收藏</button>
-          </div>
-          <p id="ride-journal-status" class="muted" role="status"></p>
-          <div id="ride-journal-list" class="record-list"></div>
+        <section class="panel space" aria-labelledby="ride-highlights-heading">
+          <p class="eyebrow">RIDE HIGHLIGHTS</p>
+          <h2 id="ride-highlights-heading">年度骑行高光</h2>
+          <p class="muted">看看这一年骑得最远、爬升最多、覆盖格子最多和 5 分钟功率最高的骑行。</p>
+          <form id="ride-highlights-form" class="action-row">
+            <label class="field">活动年份<input id="ride-highlights-year" type="number" min="1970" max="9999" step="1" required></label>
+            <button type="submit" id="ride-highlights-load" class="button button-primary">查看年度高光</button>
+          </form>
+          <p id="ride-highlights-status" class="muted" role="status"></p>
+          <div id="ride-highlights-cards" class="ride-metrics exploration-metrics" hidden></div>
         </section>
         <section id="ride-compare" class="panel space" aria-labelledby="ride-compare-heading" hidden>
           <p class="eyebrow">RIDE COMPARISON</p>
@@ -249,64 +264,6 @@
             </div>
           </div>
         </section>
-        <section class="panel space" aria-labelledby="ride-highlights-heading">
-          <p class="eyebrow">RIDE HIGHLIGHTS</p>
-          <h2 id="ride-highlights-heading">年度骑行高光</h2>
-          <p class="muted">看看这一年骑得最远、爬升最多、覆盖格子最多和 5 分钟功率最高的骑行。</p>
-          <form id="ride-highlights-form" class="action-row">
-            <label class="field">活动年份<input id="ride-highlights-year" type="number" min="1970" max="9999" step="1" required></label>
-            <button type="submit" id="ride-highlights-load" class="button button-primary">查看年度高光</button>
-          </form>
-          <p id="ride-highlights-status" class="muted" role="status"></p>
-          <div id="ride-highlights-cards" class="ride-metrics exploration-metrics" hidden></div>
-        </section>
-        <section class="panel space" aria-labelledby="ride-month-heading">
-          <p class="eyebrow">RIDE RECAP</p>
-          <h2 id="ride-month-heading">月度骑行明信片</h2>
-          <p class="muted">回看当月的骑行热图、代表骑行和探索纪录。生成热图时，浏览器会向底图服务请求当前区域的瓦片。</p>
-          <div class="action-row">
-            <label class="field">活动月份<input id="ride-month-input" type="month" placeholder="例如 2026-11" min="1970-01"></label>
-            <button type="button" id="ride-month-load" class="button button-primary">生成明信片</button>
-            <button type="button" id="ride-month-theme" class="button button-secondary">月度分享图</button>
-          </div>
-          <p id="ride-month-status" class="muted" role="status"></p>
-          <div id="ride-month-result" hidden>
-            <dl class="ride-metrics exploration-metrics">
-              <div class="ride-metric"><dt>带定位的骑行</dt><dd id="ride-month-count"></dd></div>
-              <div class="ride-metric"><dt>当月覆盖格子</dt><dd id="ride-month-cells"></dd></div>
-            </dl>
-            <div id="ride-month-map-view">
-              <h3>当月热图</h3>
-              <ul class="ride-map-legend" aria-label="当月热图图例">
-                <li><span class="swatch month-heat-low" aria-hidden="true"></span>1 次骑行</li>
-                <li><span class="swatch month-heat-mid" aria-hidden="true"></span>2–3 次骑行</li>
-                <li><span class="swatch month-heat-high" aria-hidden="true"></span>4 次及以上</li>
-              </ul>
-              <div id="ride-month-map" aria-label="可交互的当月骑行热图"></div>
-            </div>
-            <div class="ride-month-highlight">
-              <h3>代表骑行</h3>
-              <p id="ride-month-highlight"></p>
-              <p id="ride-month-record" class="muted"></p>
-              <button type="button" id="ride-month-open" class="button button-secondary">分析这趟骑行</button>
-            </div>
-            <div class="ride-month-highlight">
-              <h3>明信片预览</h3>
-              <p class="muted">分享图默认只显示月份和统计。裁剪轮廓仍可能被熟悉路线的人认出。</p>
-              <label class="choice"><input id="ride-month-route" type="checkbox">添加裁剪后的代表路线</label>
-              <div class="ride-preview"><canvas id="ride-month-card" width="1080" height="1440" aria-label="月度骑行明信片预览"></canvas></div>
-              <div class="action-row">
-                <button type="button" id="ride-month-download" class="button button-primary">下载明信片 PNG</button>
-                <button type="button" id="ride-month-share" class="button button-secondary">分享明信片</button>
-              </div>
-            </div>
-          </div>
-        </section>
-        <div class="panel space" id="track-preview" hidden>
-          <h2>轨迹预览</h2><p id="track-info" class="muted">可叠加多条轨迹并导出透明贴纸。</p>
-          <canvas id="track-canvas" width="900" height="600" aria-label="轨迹图"></canvas>
-          <button type="button" id="track-png" class="button button-secondary" disabled>导出透明 PNG</button>
-        </div>
         <section id="ride-studio" class="ride-studio space" aria-labelledby="ride-analysis-heading" hidden>
           <section class="panel ride-map-panel" aria-labelledby="ride-map-heading">
             <h2 id="ride-map-heading" tabindex="-1">骑行地图</h2>
@@ -393,6 +350,82 @@
             </div>
           </div>
         </section>
+      </section>
+
+      <section data-panel="routes" hidden>
+        <div class="workspace-intro"><div><p class="eyebrow">ROUTE JOURNAL</p><h1>路线手账</h1><p class="intro-copy">找回收藏的路线，记录补水点和路况。</p></div></div>
+        <section class="panel space" aria-labelledby="ride-journal-heading">
+          <p class="eyebrow">ROUTE JOURNAL</p>
+          <h2 id="ride-journal-heading">路线收藏与骑行手账</h2>
+          <p class="muted">从单次骑行分析收藏路线。约骑前可以按标签查找，再查看补水点和路况。</p>
+          <div class="action-row">
+            <label class="field">按标签筛选<select id="ride-journal-filter"><option value="">全部标签</option></select></label>
+            <button type="button" id="ride-journal-refresh" class="button button-quiet">刷新收藏</button>
+          </div>
+          <p id="ride-journal-status" class="muted" role="status"></p>
+          <div id="ride-journal-list" class="record-list"></div>
+        </section>
+        <div class="panel space" aria-labelledby="recorder-title">
+          <div class="panel-top"><div><h2 id="recorder-title">临时定位记录</h2><p class="muted">使用当前设备定位。记录时请保持页面开启。</p></div><label class="field">运动类型<select id="record-type"><option value="骑行">骑行</option><option value="跑步">跑步</option><option value="徒步">徒步</option></select></label></div>
+          <p id="recorder-stats" class="recorder-stats" aria-live="polite">等待开始</p>
+          <div class="action-row"><button id="start-record" class="button button-secondary" type="button">开始记录</button><button id="stop-record" class="button button-secondary" type="button" disabled>停止记录</button><button id="save-record" class="button button-primary" type="button" disabled>保存 GPX</button></div>
+        </div>
+      </section>
+
+      <section data-panel="share" hidden>
+        <div class="workspace-intro"><div><p class="eyebrow">RIDE SHARE</p><h1>分享图</h1><p class="intro-copy">用自己的骑行记录制作战报、抖音竖图和月度明信片。</p></div></div>
+        <section class="panel" aria-labelledby="ride-share-entry-heading">
+          <h2 id="ride-share-entry-heading">24 套分享图主题</h2>
+          <p class="muted">从骑行档案选择一趟活动，即可预览并导出分享图。</p>
+          <div class="action-row">
+            <a href="#tracks" class="button button-secondary">前往骑行档案</a>
+            <button id="share-current-ride" type="button" class="button button-primary" disabled>用已选骑行制作</button>
+          </div>
+        </section>
+        <section class="panel space" aria-labelledby="ride-month-heading">
+          <p class="eyebrow">RIDE RECAP</p>
+          <h2 id="ride-month-heading">月度骑行明信片</h2>
+          <p class="muted">回看当月的骑行热图、代表骑行和探索纪录。生成热图时，浏览器会向底图服务请求当前区域的瓦片。</p>
+          <div class="action-row">
+            <label class="field">活动月份<input id="ride-month-input" type="month" placeholder="例如 2026-11" min="1970-01"></label>
+            <button type="button" id="ride-month-load" class="button button-primary">生成明信片</button>
+            <button type="button" id="ride-month-theme" class="button button-secondary">月度分享图</button>
+          </div>
+          <p id="ride-month-status" class="muted" role="status"></p>
+          <div id="ride-month-result" hidden>
+            <dl class="ride-metrics exploration-metrics">
+              <div class="ride-metric"><dt>带定位的骑行</dt><dd id="ride-month-count"></dd></div>
+              <div class="ride-metric"><dt>当月覆盖格子</dt><dd id="ride-month-cells"></dd></div>
+            </dl>
+            <div id="ride-month-map-view">
+              <h3>当月热图</h3>
+              <ul class="ride-map-legend" aria-label="当月热图图例">
+                <li><span class="swatch month-heat-low" aria-hidden="true"></span>1 次骑行</li>
+                <li><span class="swatch month-heat-mid" aria-hidden="true"></span>2–3 次骑行</li>
+                <li><span class="swatch month-heat-high" aria-hidden="true"></span>4 次及以上</li>
+              </ul>
+              <div id="ride-month-map" aria-label="可交互的当月骑行热图"></div>
+            </div>
+            <div class="ride-month-highlight">
+              <h3>代表骑行</h3>
+              <p id="ride-month-highlight"></p>
+              <p id="ride-month-record" class="muted"></p>
+              <button type="button" id="ride-month-open" class="button button-secondary">分析这趟骑行</button>
+            </div>
+            <div class="ride-month-highlight">
+              <h3>明信片预览</h3>
+              <p class="muted">分享图默认只显示月份和统计。裁剪轮廓仍可能被熟悉路线的人认出。</p>
+              <label class="choice"><input id="ride-month-route" type="checkbox">添加裁剪后的代表路线</label>
+              <div class="ride-preview"><canvas id="ride-month-card" width="1080" height="1440" aria-label="月度骑行明信片预览"></canvas></div>
+              <div class="action-row">
+                <button type="button" id="ride-month-download" class="button button-primary">下载明信片 PNG</button>
+                <button type="button" id="ride-month-share" class="button button-secondary">分享明信片</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+
         <dialog id="ride-share-library" aria-labelledby="ride-share-library-title">
           <div class="share-library-top">
             <div><p class="eyebrow">RIDE SHARE</p><h2 id="ride-share-library-title">分享图主题库</h2></div>
@@ -477,12 +510,6 @@
             </div>
           </div>
         </dialog>
-        <div class="panel space" aria-labelledby="recorder-title">
-          <div class="panel-top"><div><h2 id="recorder-title">临时定位记录</h2><p class="muted">使用当前设备定位。记录时请保持页面开启。</p></div><label class="field">运动类型<select id="record-type"><option value="骑行">骑行</option><option value="跑步">跑步</option><option value="徒步">徒步</option></select></label></div>
-          <p id="recorder-stats" class="recorder-stats" aria-live="polite">等待开始</p>
-          <div class="action-row"><button id="start-record" class="button button-secondary" type="button">开始记录</button><button id="stop-record" class="button button-secondary" type="button" disabled>停止记录</button><button id="save-record" class="button button-primary" type="button" disabled>保存 GPX</button></div>
-        </div>
-      </section>
 
       <section id="run-panel" class="panel space" aria-labelledby="run-title" hidden>
         <div class="panel-top"><div><h2 id="run-title">运行日志</h2><p id="run-summary" class="muted" aria-live="polite"></p></div><button id="stop" class="button button-secondary" type="button" hidden>停止同步</button></div>
@@ -490,7 +517,7 @@
           <p id="run-guidance" role="status"></p>
           <div id="run-help-actions" class="action-row" hidden>
             <a id="run-help-accounts" class="button button-quiet" href="#accounts" hidden>前往平台账号</a>
-            <a id="run-help-records" class="button button-quiet" href="#records" hidden>前往记录中心</a>
+            <a id="run-help-records" class="button button-quiet" href="#records" hidden>前往同步记录</a>
           </div>
         </div>
         <ol id="run-log" class="run-log"></ol>
