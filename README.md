@@ -42,7 +42,7 @@ Sports Data Sync Web 是一个可自托管的骑行数据工作台，支持 Garm
 
 ### Docker Compose 自托管
 
-使用支持 Linux 容器的 Docker 主机和 Compose v2。Unraid、Linux 主机和运行 Linux 容器的 Docker Desktop 可使用同一份 Compose 配置。按手册准备 `.env` 和凭据加密密钥，再运行 `docker compose up -d --build`。个人版首次打开时创建工作台账号。邀请制由管理员生成注册链接，各账号的数据独立保存。
+使用支持 Linux 容器的 Docker 主机和 Compose v2。从 [v0.3.0 Release](https://github.com/kylin2005-art/sports-data-sync-web/releases/tag/v0.3.0) 下载 `compose.yaml` 与 `deploy.env.example`，按手册准备 `.env` 和凭据密钥，再运行 `docker compose pull` 和 `docker compose up -d --no-build`。镜像支持 Linux amd64 和 arm64。个人版首次打开时创建工作台账号，邀请制由管理员生成注册链接。
 
 主机本机试用、Unraid 内网访问和佳明授权所需的 HTTPS 配置见 [部署与使用手册](docs/使用说明.md)。
 
@@ -61,7 +61,7 @@ Sports Data Sync Web 是一个可自托管的骑行数据工作台，支持 Garm
 
 ## 部署与升级
 
-Docker 卷保存工作台账号、原始活动文件、任务和同步回执。平台凭据使用单独的密钥加密。升级前备份数据卷、密钥和部署配置，保留同一个 Compose 项目及其挂载，再执行 `docker compose up -d --build`。Windows 版本更新源码后执行 `npm ci`，随后重新启动。
+Docker 卷保存工作台账号、原始活动文件、任务和同步回执。平台凭据使用单独的密钥加密。升级前备份数据卷、密钥和部署配置，保留同一个 Compose 项目及其挂载，再使用 Release 的 Compose 配置拉取并启动新镜像。[旧版 Docker 升级步骤](docs/使用说明.md#docker-旧版升级) · [Windows 更新步骤](docs/使用说明.md#排查更新和备份)
 
 3D 海拔轨迹和战报 PNG 在浏览器内绘制。主动开启真实地图时，浏览器向地图服务请求当前区域的地图瓦片。 [OpenFreeMap](https://openfreemap.org/) · [Mapterhorn](https://mapterhorn.com/)
 
