@@ -67,6 +67,7 @@ jobs:
           if [[ "$VERIFY_ONLY" == true ]]; then
             export DOCKER_CONFIG="$(mktemp -d)"
             docker compose pull
+            test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE")" = "$REVISION"
           fi
           trap 'docker compose down --volumes' EXIT
           docker compose up -d --no-build --pull never --wait --wait-timeout 90
@@ -81,7 +82,8 @@ jobs:
           curl -fsS -b session "$GARMIN_WEB_ORIGIN/api/ride-report/month?month=2026-11" \
             | jq -e '.current.rideCount == 0'
           if [[ "$VERIFY_ONLY" == true ]]; then
-            test "$(docker run --platform linux/arm64 --rm "$IMAGE" node -p 'process.arch')" = arm64
+            docker pull --platform linux/arm64 "$IMAGE"
+            test "$(docker run --platform linux/arm64 --pull never --rm "$IMAGE" node -p 'process.arch')" = arm64
           fi
 
       - name: Push the amd64 and arm64 image
